@@ -1,0 +1,58 @@
+name: Windows build
+
+# Builds the Windows installer. Runs on demand (Actions tab → Windows build → Run workflow)
+# and on version tags like v0.2.0, which also attach the installer to a GitHub Release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      # Optional code signing: add WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD
+      # as repository secrets. Without them the installer is built unsigned.
+      - name: Configure signing
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+        run: |
+          if [ -z "$WIN_CSC_LINK" ]; then
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "::notice::No WIN_CSC_LINK secret; building an unsigned installer."
+          fi
+
+      - name: Build installer
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: npm run build && npx electron-builder --win --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Trailmix-windows
+          path: release/*.exe
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Trailmix $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" release/*.exe --clobber

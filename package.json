@@ -1,0 +1,83 @@
+{
+  "name": "trailmix",
+  "productName": "Trailmix",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI meeting notes for CG Technologies staff",
+  "author": "CG Technologies",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron \"vite --port 5173 --strictPort\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "web": "vite --port 5173",
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "test": "node --test test/",
+    "dist:mac": "vite build && cross-env APPLE_KEYCHAIN_PROFILE=trailmix-notary electron-builder --mac --universal",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:mac:unsigned": "vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal -c.mac.notarize=false"
+  },
+  "build": {
+    "appId": "com.cgtechnologies.trailmix",
+    "productName": "Trailmix",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "shared/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Trailmix records your microphone to transcribe your side of the meeting.",
+        "NSAudioCaptureUsageDescription": "Trailmix captures system audio to transcribe the other people in your meeting.",
+        "NSScreenCaptureUsageDescription": "Trailmix needs this permission to capture meeting audio from other apps. Nothing on your screen is recorded."
+      },
+      "icon": "build/icon.png",
+      "notarize": true
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "dmg": {
+      "title": "Trailmix"
+    }
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@fontsource/open-sans": "^5.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^9.2.5",
+    "cross-env": "^10.1.0",
+    "dompurify": "^3.4.17",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.3",
+    "marked": "^18.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vite": "^8.3.4",
+    "wait-on": "^9.5.1"
+  }
+}

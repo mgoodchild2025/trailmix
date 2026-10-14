@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "trailmix-web-demo", "runtimeExecutable": "npm", "runtimeArgs": ["run", "web"], "port": 5173 }
+  ]
+}
