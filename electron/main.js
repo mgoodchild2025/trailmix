@@ -6,6 +6,7 @@ import { TranscriptionSession } from './deepgram.js';
 import { streamClaude } from './llm.js';
 import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext } from './prompts.js';
 import { findTemplate } from '../shared/templates.js';
+import { setupUpdater } from './updater.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const here = import.meta.dirname;
@@ -14,6 +15,7 @@ const isMac = process.platform === 'darwin';
 let win;
 let store;
 let live = null; // { meetingId, session }
+let updater;
 const aborts = new Map(); // requestId -> AbortController
 
 // Lets tests or IT point the app at a different data folder.
@@ -217,6 +219,11 @@ function registerIpc() {
 
   handle('ai:cancel', (requestId) => aborts.get(requestId)?.abort());
 
+  // ----- updates -----
+  handle('update:status', () => updater.status());
+  handle('update:check', () => updater.check());
+  handle('update:install', () => updater.install());
+
   // ----- export -----
   handle('export:copy', ({ text, html }) => {
     clipboard.write({ text, html });
@@ -246,6 +253,7 @@ async function stopLive() {
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'), safeStorage);
   setupDisplayMedia();
+  updater = setupUpdater({ send, isRecording: () => !!live });
   registerIpc();
   createWindow();
   app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());

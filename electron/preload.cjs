@@ -38,5 +38,11 @@ contextBridge.exposeInMainWorld('trailmix', {
     cancel: invoke('ai:cancel'),
     onDelta: (cb) => on('ai:delta', cb),
   },
+  updates: {
+    status: invoke('update:status'),
+    check: invoke('update:check'),
+    install: invoke('update:install'),
+    onStatus: (cb) => on('update:status', cb),
+  },
   exporter: { copy: invoke('export:copy'), saveMarkdown: invoke('export:saveMarkdown') },
 });

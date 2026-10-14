@@ -10,7 +10,7 @@ const MODELS = [
   ['claude-haiku-5-5', 'Claude Haiku 5.5 (cheapest)'],
 ];
 
-export default function Settings({ settings, onChange, toast }) {
+export default function Settings({ settings, onChange, toast, update }) {
   const [draft, setDraft] = useState(settings);
   const [keys, setKeys] = useState({ deepgramKey: '', anthropicKey: '' });
   const [perms, setPerms] = useState(null);
@@ -168,6 +168,24 @@ export default function Settings({ settings, onChange, toast }) {
         )}
 
         <section className="card">
+          <h2>Updates</h2>
+          <div className="perm-row first">
+            <span>
+              Trailmix {update?.version || ''} <span className="muted small">— {updateText(update)}</span>
+            </span>
+            {update?.state === 'ready' ? (
+              <button className="btn small primary" onClick={() => api.updates.install().catch((e) => toast(errMsg(e)))}>
+                Restart to update
+              </button>
+            ) : (
+              <button className="btn small" disabled={!update || ['dev', 'checking', 'downloading'].includes(update.state)} onClick={() => api.updates.check()}>
+                Check now
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section className="card">
           <h2>Data</h2>
           <p className="muted small">Meetings are stored as JSON files on this computer. Deleted meetings go to a trash folder inside it.</p>
           <button className="btn" onClick={() => api.system.openDataFolder()} disabled={isDemo}>
@@ -177,6 +195,25 @@ export default function Settings({ settings, onChange, toast }) {
       </div>
     </main>
   );
+}
+
+function updateText(u) {
+  switch (u?.state) {
+    case 'dev':
+      return 'updates are off in development builds';
+    case 'checking':
+      return 'checking for updates…';
+    case 'downloading':
+      return `downloading ${u.next || 'update'}${u.percent ? ` (${u.percent}%)` : ''}…`;
+    case 'ready':
+      return `version ${u.next} is ready to install`;
+    case 'current':
+      return 'you have the latest version';
+    case 'error':
+      return `couldn't check for updates (${u.message})`;
+    default:
+      return 'updates are checked automatically';
+  }
 }
 
 function PermChip({ status }) {

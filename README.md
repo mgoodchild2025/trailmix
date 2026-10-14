@@ -52,6 +52,17 @@ To hand this to staff without security warnings you'll need:
 - **Windows:** a code-signing certificate to avoid SmartScreen prompts.
 - Or deploy through your RMM/Intune.
 
+## Releasing an update
+
+Installed copies check [GitHub Releases](https://github.com/mgoodchild2025/trailmix/releases) at launch and every 4 hours. They download new versions in the background and offer **Restart to update** (never mid-recording), or install on the next quit.
+
+1. Bump `"version"` in `package.json` (e.g. `0.2.0` → `0.2.1`), commit and push.
+2. `git tag v0.2.1 && git push --tags`. GitHub Actions builds Windows and uploads it to a **draft** release.
+3. `npm run release:mac`. This builds, signs and notarises on your Mac and uploads to the same draft. It uses your `gh` login and the `trailmix-notary` keychain profile.
+4. `npm run release:publish`. This checks both platforms are attached, then publishes. Staff only see published releases.
+
+Releases must be published, not drafts or pre-releases, for the app to see them, and the repo must stay public. Updates are off when running with `npm run dev`.
+
 ## Where data lives
 
 - macOS: `~/Library/Application Support/Trailmix/`

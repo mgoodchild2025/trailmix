@@ -166,6 +166,12 @@ function createDemoBridge() {
       cancel: async () => {},
       onDelta: (cb) => (listeners.ai.add(cb), () => listeners.ai.delete(cb)),
     },
+    updates: {
+      status: async () => ({ state: 'dev', version: '0.1.0' }),
+      check: async () => {},
+      install: async () => false,
+      onStatus: () => () => {},
+    },
     exporter: {
       copy: async ({ text, html }) => {
         await navigator.clipboard.write([

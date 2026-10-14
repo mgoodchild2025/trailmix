@@ -19,6 +19,7 @@ export default function App() {
   const [matches, setMatches] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [autoEnhance, setAutoEnhance] = useState(null);
+  const [update, setUpdate] = useState(null);
 
   const toast = useCallback((text, kind = 'error') => {
     const id = Math.random();
@@ -31,6 +32,8 @@ export default function App() {
   useEffect(() => {
     api.settings.get().then(setSettings);
     refreshList();
+    api.updates.status().then(setUpdate);
+    return api.updates.onStatus(setUpdate);
   }, [refreshList]);
 
   useEffect(() => {
@@ -94,7 +97,7 @@ export default function App() {
           openSettings={() => setView('settings')}
         />
       ) : view === 'settings' ? (
-        <Settings settings={settings} onChange={setSettings} toast={toast} />
+        <Settings settings={settings} onChange={setSettings} toast={toast} update={update} />
       ) : view === 'ask' ? (
         <main className="main ask">
           <header className="page-head drag">
@@ -111,6 +114,19 @@ export default function App() {
         <button className="floating-rec" onClick={() => select(rec.state.meetingId)}>
           <span className="rec-dot" /> Recording — back to meeting
         </button>
+      )}
+
+      {update?.state === 'ready' && (
+        <div className="update-banner">
+          <Icon name="download" /> Trailmix {update.next} is ready.
+          {rec.state.state === 'idle' ? (
+            <button className="btn small primary" onClick={() => api.updates.install().catch((e) => toast(errMsg(e)))}>
+              Restart to update
+            </button>
+          ) : (
+            <span className="muted small">Installs after you stop recording and quit.</span>
+          )}
+        </div>
       )}
 
       <div className="toasts" role="status">

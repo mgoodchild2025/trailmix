@@ -13,9 +13,11 @@
     "build": "vite build",
     "start": "vite build && electron .",
     "test": "node --test test/",
-    "dist:mac": "vite build && cross-env APPLE_KEYCHAIN_PROFILE=trailmix-notary electron-builder --mac --universal",
-    "dist:win": "vite build && electron-builder --win",
-    "dist:mac:unsigned": "vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal -c.mac.notarize=false"
+    "dist:mac": "vite build && cross-env APPLE_KEYCHAIN_PROFILE=trailmix-notary electron-builder --mac --universal --publish never",
+    "dist:win": "vite build && electron-builder --win --publish never",
+    "dist:mac:unsigned": "vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal -c.mac.notarize=false",
+    "release:mac": "node scripts/release-mac.js",
+    "release:publish": "node scripts/publish-release.js"
   },
   "build": {
     "appId": "com.cgtechnologies.trailmix",
@@ -60,10 +62,19 @@
     },
     "dmg": {
       "title": "Trailmix"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mgoodchild2025",
+        "repo": "trailmix",
+        "releaseType": "draft"
+      }
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "electron-updater": "^6.8.9",
     "ws": "^8.22.0"
   },
   "devDependencies": {

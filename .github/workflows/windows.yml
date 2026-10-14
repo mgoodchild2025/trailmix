@@ -1,7 +1,8 @@
 name: Windows build
 
-# Builds the Windows installer. Runs on demand (Actions tab → Windows build → Run workflow)
-# and on version tags like v0.2.0, which also attach the installer to a GitHub Release.
+# Run on demand (Actions tab → Windows build → Run workflow) to get a test installer as a
+# build artifact. On a version tag like v0.2.0 it also uploads the installer and update
+# metadata to the draft GitHub Release for that version (see README → Releasing).
 on:
   workflow_dispatch:
   push:
@@ -24,6 +25,15 @@ jobs:
       - run: npm ci
       - run: npm test
 
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $v"; exit 1
+          fi
+
       # Optional code signing: add WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD
       # as repository secrets. Without them the installer is built unsigned.
       - name: Configure signing
@@ -37,22 +47,19 @@ jobs:
           fi
 
       - name: Build installer
+        shell: bash
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npm run build && npx electron-builder --win --x64 --publish never
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          publish=never
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then publish=always; fi
+          npm run build
+          npx electron-builder --win --x64 --publish "$publish"
 
       - uses: actions/upload-artifact@v4
         with:
           name: Trailmix-windows
           path: release/*.exe
           if-no-files-found: error
-
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Trailmix $GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" release/*.exe --clobber
