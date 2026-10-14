@@ -61,7 +61,8 @@
       "allowToChangeInstallationDirectory": true
     },
     "dmg": {
-      "title": "Trailmix"
+      "title": "Trailmix",
+      "sign": true
     },
     "publish": [
       {
