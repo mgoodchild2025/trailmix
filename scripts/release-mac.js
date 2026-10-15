@@ -60,4 +60,13 @@ for (const f of files) {
   );
   console.log(`  uploaded ${name}`);
 }
+// macOS registers every built copy as a trailmix:// handler and may then open links in
+// one of these build folders instead of /Applications. Unregister them.
+const lsregister = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
+for (const dir of fs.readdirSync('release').filter((d) => d.startsWith('mac'))) {
+  try {
+    sh(`"${lsregister}" -u "release/${dir}/Trailmix.app"`);
+  } catch {}
+}
+
 console.log(`\nDone. Publish with: npm run release:publish`);
