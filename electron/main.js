@@ -538,6 +538,10 @@ async function stopLive() {
   send('transcribe:event', { type: 'status', meetingId, state: 'stopped' });
 }
 
+// Windows shows this ID's app name and icon on notifications; it must match the
+// installer's appId (package.json build.appId).
+if (process.platform === 'win32') app.setAppUserModelId('com.cgtechnologies.trailmix');
+
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'), safeStorage);
   setupDisplayMedia();
