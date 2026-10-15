@@ -12,7 +12,9 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Trailmix records the meeting so it can transcribe it. Audio is never saved.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "appleTeamId": "LM4G49467Q",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
