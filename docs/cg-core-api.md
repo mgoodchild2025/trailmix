@@ -111,6 +111,46 @@ Core aborts the upstream request when the client disconnects. It records one row
 
 Revokes the calling device. `204`.
 
+### `POST /api/trailmix/v1/shares` (v1.1: share links)
+
+Shares a meeting's notes with colleagues through CG Core. Sharing the same meeting again from the same staff member updates that share, so the link stays the same.
+
+```
+{
+  "meetingId": "<Trailmix's local meeting id>",
+  "title": "Northfield Dental - Q3 service review",
+  "occurredAt": "2026-10-14T15:00:00.000Z",
+  "durationSec": 2710,                        // optional
+  "template": "Client meeting / QBR",         // optional, display only
+  "markdown": "# ...\n\n## ..."               // the notes; may contain <mark>...</mark> (lines from the note-taker)
+}
+
+200 { "id": "<uuid>", "url": "https://core.cgtechnologies.com/trailmix/notes/<uuid>", "createdAt": "...", "updatedAt": "..." }
+```
+
+- The upsert key is (staff, `meetingId`) among shares that are not revoked.
+- Limits:
+  - `title` is at most 200 characters.
+  - `markdown` is at most 300 KB (`413 too_large`).
+  - Empty `markdown` gets `400 invalid_request`.
+- Shares are rate limited per staff member (`429 rate_limited`).
+- Transcripts are never sent.
+
+### `DELETE /api/trailmix/v1/shares/{id}`
+
+Stops sharing. Only the owner can do this. Returns `204`, or `404` if the share isn't theirs or doesn't exist. The link then shows "These notes are no longer shared."
+
+### Viewing: `GET {core}/trailmix/notes/{id}`
+
+- **Access:** a Core page that needs a normal staff session. Portal users and inactive staff are refused.
+- **Who can open it:** any active staff member with the link.
+- **What it shows:**
+  - the title, date, duration and template
+  - "Shared by <name>" and the last update time
+  - the notes rendered from Markdown and sanitised, with `<mark>` shown as a subtle highlight
+  - a Copy button
+- **Owner's list:** owners see their shares under My profile > Trailmix ("Notes you've shared"), with Stop sharing.
+
 ## 4. CG Core admin UI
 
 - **Settings → Integrations:** a Deepgram card, permission `manage_ai`. It stores the key encrypted like the Anthropic key, has a test button, and its config holds the model, language and org vocabulary.

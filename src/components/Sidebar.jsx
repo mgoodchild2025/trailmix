@@ -59,6 +59,7 @@ export default function Sidebar({ meetings, selectedId, view, query, onQuery, ma
                   <span className="meeting-meta">
                     {new Date(m.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     {m.hasEnhanced && <span className="chip tiny">Enhanced</span>}
+                    {m.shared && <span className="chip tiny" title="Shared in CG Core">Shared</span>}
                   </span>
                 </button>
                 <button

@@ -98,6 +98,25 @@ export class CoreClient {
     return (await this.request('/api/trailmix/v1/deepgram-token', { method: 'POST' })).json();
   }
 
+  // Share links (docs/cg-core-api.md, v1.1). Sharing again updates the same link.
+  async share({ meetingId, title, occurredAt, durationSec, template, markdown }) {
+    try {
+      return await (await this.request('/api/trailmix/v1/shares', { method: 'POST', body: { meetingId, title, occurredAt, durationSec, template, markdown } })).json();
+    } catch (err) {
+      if (err.status === 404) err.message = "This CG Core doesn't support share links yet.";
+      if (err.status === 413) err.message = 'These notes are too long to share through CG Core.';
+      throw err;
+    }
+  }
+
+  async unshare(id) {
+    try {
+      await this.request(`/api/trailmix/v1/shares/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (err) {
+      if (err.status !== 404) throw err; // already gone
+    }
+  }
+
   async signout() {
     await this.request('/api/trailmix/v1/signout', { method: 'POST' });
   }

@@ -56,6 +56,15 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
     [id],
   );
 
+  // Share link created or removed from the menu.
+  useEffect(
+    () =>
+      api.meetings.onChanged(({ updated }) => {
+        if (updated === id) api.meetings.get(id).then((m) => setMeeting((cur) => cur && { ...cur, share: m.share }));
+      }),
+    [id],
+  );
+
   // ---- saving ----
   const flush = useCallback(() => {
     clearTimeout(saveTimer.current);
@@ -140,6 +149,14 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           <div className="meta muted small">
             {fmtDate(meeting.createdAt)}
             {duration > 0 && <> · {formatTime(duration)}</>}
+            {meeting.share && (
+              <>
+                {' · '}
+                <a href={meeting.share.url} target="_blank" rel="noreferrer" className="shared-link" title="Open in CG Core">
+                  <Icon name="link" size={12} /> Shared in CG Core
+                </a>
+              </>
+            )}
           </div>
         </div>
         <div className="meeting-head-right no-drag">
@@ -191,6 +208,17 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           <span className="divider" />
           <button className={`icon-btn ${showTranscript ? 'on' : ''}`} onClick={() => setShowTranscript((v) => !v)} title="Transcript">
             <Icon name="transcript" />
+          </button>
+          <button
+            className="icon-btn"
+            title="Share"
+            onClick={async (e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              await flush();
+              api.meetings.menu({ id, x: r.left, y: r.bottom + 2 });
+            }}
+          >
+            <Icon name="share" />
           </button>
           <button className="icon-btn" onClick={copyNotes} title="Copy notes">
             <Icon name="copy" />

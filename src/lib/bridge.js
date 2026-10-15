@@ -43,6 +43,7 @@ function createDemoBridge() {
         createdAt: now - 3 * 3600e3,
         updatedAt: now,
         templateId: 'client-review',
+        share: { id: 'demo', url: 'https://core.cgtechnologies.com/trailmix/notes/demo', updatedAt: new Date().toISOString() },
         notes: 'backups failing leeds\nwants teams phones quote\nrenewal march - price sensitive\nMFA rollout for reception?',
         transcript: [
           seg(1, 0, 4, 'Thanks for making time. The main thing on our side is the backups at the Leeds practice.'),
@@ -85,7 +86,7 @@ function createDemoBridge() {
   );
   const summary = (m) => ({
     id: m.id, title: m.title, createdAt: m.createdAt, updatedAt: m.updatedAt,
-    hasEnhanced: !!m.enhanced, segments: m.transcript.length,
+    hasEnhanced: !!m.enhanced, shared: !!m.share, segments: m.transcript.length,
     preview: (m.enhanced || m.notes).replace(/<\/?mark>|[#*\-\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140),
   });
   const streamText = async (requestId, text) => {

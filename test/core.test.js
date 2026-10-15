@@ -116,3 +116,36 @@ test('readNdjson handles a final line without a newline', async () => {
   for await (const m of readNdjson(chunks())) out.push(m);
   assert.deepEqual(out, [{ a: 1 }, { b: 2 }]);
 });
+
+test('share links: create or update, and stop sharing', async () => {
+  const shares = new Map();
+  let lastBody;
+  const { srv, url } = await fakeCore({
+    'POST /api/trailmix/v1/shares': (_q, res, body) => {
+      lastBody = body;
+      if (body.markdown.length > 50) return res.writeHead(413, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'big', code: 'too_large' }));
+      const id = [...shares.entries()].find(([, v]) => v === body.meetingId)?.[0] || `s${shares.size + 1}`;
+      shares.set(id, body.meetingId);
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ id, url: `${url}/trailmix/notes/${id}`, updatedAt: 'now' }));
+    },
+    'DELETE /api/trailmix/v1/shares/s1': (_q, res) => (shares.delete('s1'), res.writeHead(204).end()),
+    'DELETE /api/trailmix/v1/shares/gone': (_q, res) => res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'x' })),
+  });
+  const core = new CoreClient({ baseUrl: url, token: 't' });
+  const a = await core.share({ meetingId: 'm1', title: 'QBR', occurredAt: 'x', markdown: '# Notes' });
+  const b = await core.share({ meetingId: 'm1', title: 'QBR', occurredAt: 'x', markdown: '# Notes v2' });
+  assert.equal(a.url, b.url);
+  assert.equal(lastBody.markdown, '# Notes v2');
+  await assert.rejects(core.share({ meetingId: 'm2', title: 't', occurredAt: 'x', markdown: 'x'.repeat(60) }), /too long to share/);
+  await core.unshare('s1');
+  await core.unshare('gone'); // already gone is fine
+  assert.equal(shares.size, 0);
+  srv.close();
+});
+
+test('an older CG Core without share links says so', async () => {
+  const { srv, url } = await fakeCore({});
+  const core = new CoreClient({ baseUrl: url, token: 't' });
+  await assert.rejects(core.share({ meetingId: 'm', title: 't', occurredAt: 'x', markdown: 'n' }), /doesn't support share links yet/);
+  srv.close();
+});

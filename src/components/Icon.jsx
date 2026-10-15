@@ -19,6 +19,8 @@ const paths = {
   warn: 'M12 4l9 16H3zM12 10v4M12 17v.5',
   folder: 'M3 7h6l2 2h10v10H3z',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
+  share: 'M12 4v11M8 8l4-4 4 4M5 14v5h14v-5',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
 };
 
 export default function Icon({ name, size = 16, className = '' }) {

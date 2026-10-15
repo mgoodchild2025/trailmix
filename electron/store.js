@@ -164,6 +164,7 @@ export class Store {
         createdAt: m.createdAt,
         updatedAt: m.updatedAt,
         hasEnhanced: !!m.enhanced,
+        shared: !!m.share,
         segments: m.transcript.length,
         preview: (m.enhanced || m.notes || m.transcript.map((s) => s.text).join(' '))
           .replace(/<\/?mark>/g, '')
@@ -190,7 +191,7 @@ export class Store {
 
   patch(id, fields) {
     const m = this.get(id);
-    const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat'];
+    const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat', 'share'];
     for (const k of allowed) if (k in fields) m[k] = fields[k];
     m.updatedAt = Date.now();
     this.scheduleFlush(id);

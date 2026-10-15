@@ -10,6 +10,7 @@ import { TranscriptionSession } from './deepgram.js';
 import { streamClaude } from './llm.js';
 import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext } from './prompts.js';
 import { findTemplate } from '../shared/templates.js';
+import { durationOf } from '../shared/transcript.js';
 import { setupUpdater } from './updater.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from './core.js';
 
@@ -204,7 +205,8 @@ function registerIpc() {
     return store.create({ templateId: s.defaultTemplateId, ...fields });
   });
   handle('meetings:patch', (id, fields) => {
-    store.patch(id, fields);
+    const { share: _ignored, ...rest } = fields || {}; // share links are set only by the main process
+    store.patch(id, rest);
     return true;
   });
   handle('meetings:delete', async (id) => {
@@ -389,8 +391,21 @@ function registerIpc() {
       { label: 'Email notes…', enabled: has, click: () => emailNotes(title, md) },
       { label: 'Save as Markdown…', enabled: has, click: () => saveMarkdown(title, md) },
     ];
+    // CG Core link: colleagues open the notes in Core.
+    const core = store.settings().core.connected;
+    share.unshift(
+      { label: m.share ? 'Copy CG Core link (updates the notes)' : 'Copy CG Core link', enabled: has && core, click: () => shareToCore(id) },
+      ...(m.share
+        ? [
+            { label: 'Open in CG Core', enabled: /^https:\/\//.test(m.share.url), click: () => shell.openExternal(m.share.url) },
+            { label: 'Stop sharing', click: () => stopSharing(id) },
+          ]
+        : []),
+      ...(!core ? [{ label: 'Sign in to CG Core to share links', enabled: false }] : []),
+      { type: 'separator' },
+    );
     // macOS share sheet: Mail, Messages, AirDrop, Notes…
-    if (isMac && has) share.push({ type: 'separator' }, { label: 'More', role: 'shareMenu', sharingItem: { texts: [`${title}\n\n${md}`] } });
+    if (isMac && has) share.push({ type: 'separator' }, { label: 'More', role: 'shareMenu', sharingItem: { texts: [m.share ? `${title}\n${m.share.url}` : `${title}\n\n${md}`] } });
     Menu.buildFromTemplate([
       { label: 'Share', submenu: share },
       { type: 'separator' },
@@ -403,6 +418,43 @@ function registerIpc() {
 // without the <mark> tags that show which lines came from the note-taker.
 function shareableNotes(m) {
   return (m.enhanced || m.notes || '').replace(/<\/?mark>/g, '').trim();
+}
+
+async function shareToCore(id) {
+  const core = coreClient();
+  if (!core) return send('app:toast', { text: 'Sign in to CG Core in Settings to share links.' });
+  const m = store.get(id);
+  const s = store.settings();
+  try {
+    const res = await core.share({
+      meetingId: id,
+      title: m.title?.trim() || 'Untitled meeting',
+      occurredAt: new Date(m.createdAt).toISOString(),
+      durationSec: Math.round(durationOf(m.transcript)) || undefined,
+      template: m.enhanced ? findTemplate(m.templateId, s.customTemplates).name : undefined,
+      markdown: (m.enhanced || m.notes || '').trim(),
+    });
+    store.patch(id, { share: { id: res.id, url: res.url, updatedAt: res.updatedAt } });
+    clipboard.writeText(res.url);
+    send('meetings:changed', { updated: id });
+    send('app:toast', { text: m.share ? 'Link copied. The notes in CG Core are up to date.' : 'Link copied. Anyone at CG Technologies can open it in CG Core.', kind: 'ok' });
+  } catch (err) {
+    if (err.unauthorized) signOutLocal(err.message);
+    send('app:toast', { text: err.message });
+  }
+}
+
+async function stopSharing(id) {
+  const m = store.get(id);
+  if (!m.share) return;
+  try {
+    await coreClient()?.unshare(m.share.id);
+    store.patch(id, { share: null });
+    send('meetings:changed', { updated: id });
+    send('app:toast', { text: 'Stopped sharing. The link no longer opens the notes.', kind: 'ok' });
+  } catch (err) {
+    send('app:toast', { text: err.message });
+  }
 }
 
 function copyNotes(md) {
@@ -433,16 +485,18 @@ async function saveMarkdown(title, markdown) {
 
 async function confirmDelete(id, title) {
   const recording = live?.meetingId === id;
+  const shared = !!store.get(id).share;
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
     buttons: ['Delete', 'Cancel'],
     defaultId: 1,
     cancelId: 1,
     message: `Delete "${title}"?`,
-    detail: `${recording ? 'This meeting is recording; deleting it stops the recording. ' : ''}It will be moved to Trailmix's trash folder.`,
+    detail: `${recording ? 'This meeting is recording; deleting it stops the recording. ' : ''}${shared ? 'Its CG Core link will stop working. ' : ''}It will be moved to Trailmix's trash folder.`,
   });
   if (response !== 0) return;
   if (recording) await stopLive();
+  if (shared) await coreClient()?.unshare(store.get(id).share.id).catch(() => {});
   store.remove(id);
   send('meetings:changed', { deleted: id });
 }
