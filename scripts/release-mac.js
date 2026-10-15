@@ -10,6 +10,7 @@ const repo = 'mgoodchild2025/trailmix';
 const sh = (cmd, opts = {}) => execSync(cmd, { encoding: 'utf8', ...opts });
 
 console.log(`Building Trailmix ${version} for macOS…`);
+sh('zsh scripts/build-micwatch.sh', { stdio: 'inherit' }); // meeting detection helper
 sh('npx vite build', { stdio: 'inherit' });
 sh('npx electron-builder --mac --universal --publish never', {
   stdio: 'inherit',

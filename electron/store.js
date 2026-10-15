@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS = {
   autoEnhance: true,
   customTemplates: [],
   coreUrl: CORE_DEFAULT_URL,
+  detectMeetings: true, // offer to take notes when a meeting app uses the microphone
+  detectAnyApp: false, // ...or any app at all
   coreInfo: null, // last /me response from CG Core: staff, device, features, config
 };
 

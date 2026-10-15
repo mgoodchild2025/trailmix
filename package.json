@@ -13,11 +13,12 @@
     "build": "vite build",
     "start": "vite build && electron .",
     "test": "node --test test/",
-    "dist:mac": "vite build && cross-env APPLE_KEYCHAIN_PROFILE=trailmix-notary electron-builder --mac --universal --publish never",
+    "dist:mac": "zsh scripts/build-micwatch.sh && vite build && cross-env APPLE_KEYCHAIN_PROFILE=trailmix-notary electron-builder --mac --universal --publish never",
     "dist:win": "vite build && electron-builder --win --publish never",
-    "dist:mac:unsigned": "vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal -c.mac.notarize=false",
+    "dist:mac:unsigned": "zsh scripts/build-micwatch.sh && vite build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal -c.mac.notarize=false",
     "release:mac": "node scripts/release-mac.js",
-    "release:publish": "node scripts/publish-release.js"
+    "release:publish": "node scripts/publish-release.js",
+    "build:micwatch": "zsh scripts/build-micwatch.sh"
   },
   "build": {
     "appId": "com.cgtechnologies.trailmix",
@@ -47,7 +48,13 @@
         "NSScreenCaptureUsageDescription": "Trailmix needs this permission to capture meeting audio from other apps. Nothing on your screen is recorded."
       },
       "icon": "build/icon.png",
-      "notarize": true
+      "notarize": true,
+      "extraResources": [
+        {
+          "from": "build/bin/trailmix-micwatch",
+          "to": "trailmix-micwatch"
+        }
+      ]
     },
     "win": {
       "target": [
