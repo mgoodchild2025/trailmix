@@ -18,6 +18,8 @@ function createDemoBridge() {
     keyterms: 'CG Technologies',
     defaultTemplateId: 'general',
     autoEnhance: true,
+    detectMeetings: true,
+    detectAnyApp: false,
     customTemplates: [],
     hasDeepgramKey: true,
     hasAnthropicKey: true,
@@ -134,6 +136,7 @@ function createDemoBridge() {
       onChanged: (cb) => (changeListeners.add(cb), () => changeListeners.delete(cb)),
     },
     onToast: () => () => {},
+    detect: { onStart: () => () => {}, onStop: () => () => {} },
     system: {
       permissions: async () => ({ platform: 'demo', mic: 'granted', screen: 'granted' }),
       askMic: async () => true,

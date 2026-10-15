@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('trailmix', {
     onChanged: (cb) => on('meetings:changed', cb),
   },
   onToast: (cb) => on('app:toast', cb),
+  detect: {
+    onStart: (cb) => on('detect:start', cb),
+    onStop: (cb) => on('detect:stop', cb),
+  },
   system: {
     permissions: invoke('system:permissions'),
     askMic: invoke('system:askMic'),

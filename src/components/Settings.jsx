@@ -146,6 +146,22 @@ export default function Settings({ settings, onChange, toast, update }) {
           </label>
         </section>
 
+        <section className="card">
+          <h2>Meeting detection</h2>
+          <p className="muted small">
+            When Teams, Zoom, Webex, Slack, Google Meet or another call app starts using your microphone, Trailmix asks whether to take notes. It never starts
+            recording on its own, and it offers to stop when the call app lets go of the microphone.
+          </p>
+          <label className="check">
+            <input type="checkbox" checked={draft.detectMeetings !== false} onChange={(e) => save({ detectMeetings: e.target.checked })} />
+            Offer to take notes when a meeting starts
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={!!draft.detectAnyApp} disabled={draft.detectMeetings === false} onChange={(e) => save({ detectAnyApp: e.target.checked })} />
+            Ask for any app that uses the microphone, not just meeting apps
+          </label>
+        </section>
+
         <Templates custom={settings.customTemplates || []} onSave={(customTemplates) => save({ customTemplates })} />
 
         {perms && perms.platform === 'darwin' && (

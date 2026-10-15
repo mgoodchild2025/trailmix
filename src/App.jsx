@@ -83,6 +83,21 @@ export default function App() {
     if (record) rec.start(m.id);
   };
 
+  // A meeting app started using the mic and the user said "Start recording" in the
+  // notification (or "Stop recording" when the call ended).
+  const newMeetingRef = useRef(newMeeting);
+  newMeetingRef.current = newMeeting;
+  useEffect(() => {
+    const offStart = api.detect.onStart(() => {
+      if (recRef.current.state.state === 'idle') newMeetingRef.current({ record: true });
+    });
+    const offStop = api.detect.onStop(() => recRef.current.stop());
+    return () => {
+      offStart();
+      offStop();
+    };
+  }, []);
+
   if (!settings) return <div className="app loading" />;
 
   const setupNeeded = !settings.hasDeepgramKey || !settings.hasAnthropicKey;

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification } from 'electron';
 import { marked } from 'marked';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -12,6 +12,8 @@ import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, librar
 import { findTemplate } from '../shared/templates.js';
 import { setupUpdater } from './updater.js';
 import { setupSync } from './sync.js';
+import { MeetingDetector } from './meeting-detect.js';
+import { watchMicrophone } from './micwatch.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from '../shared/core.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -197,7 +199,11 @@ function registerIpc() {
   const handle = (ch, fn) => ipcMain.handle(ch, (_e, ...args) => fn(...args));
 
   handle('settings:get', () => store.settings());
-  handle('settings:set', (patch) => store.saveSettings(patch));
+  handle('settings:set', (patch) => {
+    const out = store.saveSettings(patch);
+    if ('detectMeetings' in patch || 'detectAnyApp' in patch) setupMeetingDetection();
+    return out;
+  });
 
   handle('meetings:list', () => store.list());
   handle('meetings:search', (q) => store.search(q));
@@ -461,6 +467,68 @@ async function confirmDelete(id, title) {
   send('meetings:changed', { deleted: id });
 }
 
+// ---------- meeting detection ----------
+// When a call app starts using the microphone, offer to take notes; if the recording was
+// started that way, offer to stop when the call app lets go. Never records on its own.
+let detector = null;
+let stopWatching = null;
+const shownNotes = new Set(); // keep references so notifications aren't garbage-collected
+
+function notify({ title, body, action, onAccept }) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: false, actions: isMac ? [{ type: 'button', text: action }] : [], closeButtonText: 'Not now' });
+  const accept = () => {
+    shownNotes.delete(n);
+    onAccept();
+  };
+  n.on('action', accept);
+  n.on('click', accept);
+  n.on('close', () => shownNotes.delete(n));
+  shownNotes.add(n);
+  n.show();
+}
+
+function showWindow() {
+  if (!win || win.isDestroyed()) createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function setupMeetingDetection() {
+  stopWatching?.();
+  stopWatching = null;
+  const s = store.settings();
+  if (!s.detectMeetings || !['darwin', 'win32'].includes(process.platform)) return;
+  detector = new MeetingDetector({
+    platform: process.platform,
+    anyApp: !!s.detectAnyApp,
+    isRecording: () => !!live,
+    onPrompt: ({ key, label }) =>
+      notify({
+        title: `${label} is using your microphone`,
+        body: 'Take notes on this meeting with Trailmix?',
+        action: 'Start recording',
+        onAccept: () => {
+          showWindow();
+          detector?.follow(key, label);
+          send('detect:start', { label });
+        },
+      }),
+    onEnded: ({ label }) =>
+      notify({
+        title: `${label} call ended?`,
+        body: 'Stop recording and write your notes.',
+        action: 'Stop recording',
+        onAccept: () => {
+          showWindow();
+          send('detect:stop', {});
+        },
+      }),
+  });
+  stopWatching = watchMicrophone((apps) => detector?.update(apps), (msg) => console.warn(msg));
+}
+
 async function stopLive() {
   if (!live) return;
   const { session, meetingId } = live;
@@ -497,11 +565,15 @@ app.whenReady().then(() => {
   createWindow();
   refreshCore();
   setInterval(refreshCore, 30 * 60 * 1000);
+  setupMeetingDetection();
   if (pendingLink) win.webContents.once('did-finish-load', () => handleLink(pendingLink));
   app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 });
 
-app.on('before-quit', () => store?.flushAll());
+app.on('before-quit', () => {
+  stopWatching?.();
+  store?.flushAll();
+});
 app.on('window-all-closed', async () => {
   await stopLive();
   store?.flushAll();
