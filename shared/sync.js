@@ -41,6 +41,21 @@ export function mergeMeetings(a, b) {
   return out;
 }
 
+// Key order doesn't matter (Postgres jsonb sorts keys); values and array order do.
+export function canonical(v) {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v).sort()) if (v[k] !== undefined) out[k] = canonical(v[k]);
+    return out;
+  }
+  return v;
+}
+
+export function sameDoc(a, b) {
+  return JSON.stringify(canonical(forUpload(a))) === JSON.stringify(canonical(forUpload(b)));
+}
+
 export function forUpload(doc) {
   const copy = { ...doc };
   for (const k of LOCAL_ONLY) delete copy[k];
@@ -183,8 +198,9 @@ export class SyncEngine {
         const merged = mergeMeetings(local, m.doc);
         this.storage.put(merged);
         s.items[m.id] = { version: m.version, dirty: false };
-        // Local had something Core didn't (shouldn't happen when clean): push it back.
-        if (local && JSON.stringify(forUpload(merged)) !== JSON.stringify(forUpload(m.doc))) s.items[m.id].dirty = true;
+        // Local had something Core didn't: push the merge back. Compare content, not JSON
+        // text: Core stores jsonb, which reorders keys.
+        if (local && !sameDoc(merged, m.doc)) s.items[m.id].dirty = true;
         changed.add(m.id);
       }
       s.cursor = res.cursor ?? s.cursor;

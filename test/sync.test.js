@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import { SyncEngine, mergeMeetings, touch } from '../shared/sync.js';
 
 // In-memory CG Core following docs/cg-core-api.md section 5.
-function fakeCore({ pageSize } = {}) {
+// Postgres jsonb returns objects with keys sorted (and recursively), like this.
+const jsonb = (v) => (Array.isArray(v) ? v.map(jsonb) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, jsonb(v[k])])) : v);
+
+function fakeCore({ pageSize, reorderKeys = true } = {}) {
   const rows = new Map(); // id -> { version, seq, deleted, doc }
   let seq = 0;
   const err = (status, body) => Object.assign(new Error(`HTTP ${status}`), { status, body });
   const current = (id) => {
     const r = rows.get(id);
-    return r && { id, version: r.version, deleted: r.deleted, doc: r.deleted ? null : structuredClone(r.doc) };
+    return r && { id, version: r.version, deleted: r.deleted, doc: r.deleted ? null : reorderKeys ? jsonb(r.doc) : structuredClone(r.doc) };
   };
   return {
     rows,
@@ -165,4 +168,28 @@ test('local-only sync bookkeeping is never uploaded', async () => {
   d.edit('m1', { title: 't', _sync: { secret: 1 } }, 1000);
   await d.engine.sync();
   assert.equal('_sync' in core.rows.get('m1').doc, false);
+});
+
+test('devices settle: nothing is re-uploaded after a sync with no changes', async () => {
+  const core = fakeCore();
+  const phone = device(core);
+  const laptop = device(core);
+  phone.edit('m1', { title: 'Site visit', notes: 'rack', source: 'mobile' }, 1000);
+  laptop.edit('m2', { title: 'QBR', notes: 'renewal', source: 'desktop' }, 1100);
+  for (let i = 0; i < 4; i++) {
+    await phone.engine.sync();
+    await laptop.engine.sync();
+  }
+  const versions = () => [...core.rows.values()].map((r) => r.version);
+  const before = versions();
+  for (let i = 0; i < 3; i++) {
+    await phone.engine.sync();
+    await laptop.engine.sync();
+  }
+  assert.deepEqual(versions(), before, 'versions kept rising: devices are ping-ponging uploads');
+  assert.deepEqual(before, [1, 1]);
+  for (const d of [phone, laptop]) {
+    const st = d.engine.state();
+    assert.equal(Object.values(st.items).some((i) => i.dirty), false);
+  }
 });
