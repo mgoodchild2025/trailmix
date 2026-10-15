@@ -115,3 +115,59 @@ Revokes the calling device. `204`.
 
 - **Settings → Integrations:** a Deepgram card, permission `manage_ai`. It stores the key encrypted like the Anthropic key, has a test button, and its config holds the model, language and org vocabulary.
 - **Trailmix devices:** each staff member sees and can revoke their own devices. Holders of `manage_ai` see and can revoke all devices, plus usage per person.
+
+## 5. Meeting sync (v2: desktop and mobile)
+
+CG Core stores each staff member's meetings so they appear on every device they sign in on. Meetings are **private to their owner**: only that staff member's own devices can read them, and nothing in Core's UI lists them for anyone else. Audio is never sent.
+
+`GET /api/trailmix/v1/me` adds `"features": { ..., "sync": true }` once these endpoints exist.
+
+### Meeting document
+
+The document is the same JSON the desktop app keeps per meeting. Core stores it as an opaque `jsonb` document, plus a few columns copied out for ordering:
+
+```
+{
+  "id": "mv8x55g8-db8464",           // client-generated, 1-64 chars [A-Za-z0-9-]
+  "title": "...", "createdAt": 1792000000000, "updatedAt": 1792000000000,   // ms since epoch
+  "notes": "...", "enhanced": "...", "templateId": "client-review",
+  "transcript": [ { "id", "channel", "speaker", "text", "start", "end", "mono"? } ],
+  "chat": [ { "role", "content" } ],
+  "source": "desktop" | "mobile"
+}
+```
+
+### `GET /api/trailmix/v1/meetings?since=<cursor>&limit=100`
+
+Lists the caller's meetings that changed after `cursor`. `cursor` is an opaque string, and the first sync omits it.
+
+```
+200 {
+  "meetings": [ { "id": "...", "version": 7, "deleted": false, "doc": { ...meeting... } },
+                { "id": "...", "version": 3, "deleted": true,  "doc": null } ],
+  "cursor": "<opaque>",     // pass back next time
+  "more": false             // true: call again straight away with the new cursor
+}
+```
+
+### `PUT /api/trailmix/v1/meetings/{id}`
+
+Creates or replaces one meeting.
+
+```
+{ "ifVersion": 6, "doc": { ...meeting... } }   // ifVersion omitted or null when creating
+200 { "id": "...", "version": 7 }
+409 { "error": "...", "code": "conflict", "current": { "id", "version", "deleted", "doc" } }
+```
+
+- **Versions:** `version` is a per-meeting counter that Core increments on every write. A `PUT` whose `ifVersion` doesn't match the stored version gets `409` with the current copy. The client merges the two (see `shared/sync.js`) and retries with the new version.
+- **Validation:** `doc.id` must equal `{id}`. A deleted meeting can be revived by a `PUT` with its current version.
+- **Limits:** a `doc` over 5 MB gets `413 too_large`. Requests are rate limited per staff member, generously, because sync sends a write per edited meeting.
+
+### `DELETE /api/trailmix/v1/meetings/{id}?ifVersion=<n>`
+
+Marks the meeting deleted and **erases its document**, keeping only the id and version as a tombstone so other devices learn about the deletion. Returns `200 { "id", "version" }`, or `409 conflict` as for `PUT`.
+
+### CG Core admin UI
+
+My profile > Trailmix shows "Meetings synced: N" and a **Delete all my synced meetings** button. Core doesn't show meeting contents anywhere.
