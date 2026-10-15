@@ -38,6 +38,15 @@ contextBridge.exposeInMainWorld('trailmix', {
     cancel: invoke('ai:cancel'),
     onDelta: (cb) => on('ai:delta', cb),
   },
+  core: {
+    urls: invoke('core:urls'),
+    connect: invoke('core:connect'),
+    pairCode: invoke('core:pairCode'),
+    cancel: invoke('core:cancel'),
+    refresh: invoke('core:refresh'),
+    signout: invoke('core:signout'),
+    onStatus: (cb) => on('core:status', cb),
+  },
   updates: {
     status: invoke('update:status'),
     check: invoke('update:check'),

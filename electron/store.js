@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const SECRET_KEYS = ['deepgramKey', 'anthropicKey'];
+const SECRET_KEYS = ['deepgramKey', 'anthropicKey', 'coreToken'];
+export const CORE_DEFAULT_URL = 'https://core.cgtechnologies.com';
 
 export const DEFAULT_SETTINGS = {
   myName: '',
@@ -15,6 +16,8 @@ export const DEFAULT_SETTINGS = {
   defaultTemplateId: 'general',
   autoEnhance: true,
   customTemplates: [],
+  coreUrl: CORE_DEFAULT_URL,
+  coreInfo: null, // last /me response from CG Core: staff, device, features, config
 };
 
 export class Store {
@@ -66,8 +69,15 @@ export class Store {
     const pub = { ...DEFAULT_SETTINGS };
     for (const [k, v] of Object.entries(raw)) if (!SECRET_KEYS.includes(k)) pub[k] = v;
     const s = this.secrets();
-    pub.hasDeepgramKey = !!s.deepgramKey;
-    pub.hasAnthropicKey = !!s.anthropicKey;
+    const info = pub.coreInfo;
+    delete pub.coreInfo;
+    pub.core = s.coreToken
+      ? { connected: true, url: pub.coreUrl, staff: info?.staff, device: info?.device, features: info?.features || {}, config: info?.config || {} }
+      : { connected: false, url: pub.coreUrl };
+    pub.ownKeys = { deepgram: !!s.deepgramKey, anthropic: !!s.anthropicKey };
+    // "Available" means usable right now, through CG Core or the user's own key.
+    pub.hasDeepgramKey = pub.ownKeys.deepgram || (pub.core.connected && pub.core.features.deepgram !== false);
+    pub.hasAnthropicKey = pub.ownKeys.anthropic || (pub.core.connected && pub.core.features.claude !== false);
     pub.encryptionAvailable = this.safe.isEncryptionAvailable();
     return pub;
   }
@@ -75,7 +85,7 @@ export class Store {
   saveSettings(patch) {
     const raw = this.readSettingsRaw();
     for (const [k, v] of Object.entries(patch)) {
-      if (k.startsWith('has') || k === 'encryptionAvailable') continue;
+      if (k.startsWith('has') || ['encryptionAvailable', 'core', 'ownKeys', 'coreToken', 'coreInfo', 'coreUrl'].includes(k)) continue;
       if (SECRET_KEYS.includes(k)) {
         if (!v) delete raw[k];
         else if (this.safe.isEncryptionAvailable())
@@ -85,6 +95,19 @@ export class Store {
     }
     writeAtomic(this.settingsPath, JSON.stringify(raw, null, 2));
     return this.settings();
+  }
+
+  // CG Core connection: written only by the main process, never from the renderer.
+  setCore({ token, info, url }) {
+    const raw = this.readSettingsRaw();
+    if (token !== undefined) {
+      if (!token) delete raw.coreToken;
+      else if (this.safe.isEncryptionAvailable()) raw.coreToken = { enc: this.safe.encryptString(token).toString('base64') };
+      else raw.coreToken = { plain: token };
+    }
+    if (info !== undefined) raw.coreInfo = info;
+    if (url !== undefined) raw.coreUrl = url;
+    writeAtomic(this.settingsPath, JSON.stringify(raw, null, 2));
   }
 
   // ---------- meetings ----------

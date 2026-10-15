@@ -40,6 +40,8 @@ export default function Settings({ settings, onChange, toast, update }) {
         <h1>Settings</h1>
       </header>
       <div className="settings-body">
+        <CoreCard core={settings.core} ownKeys={settings.ownKeys} toast={toast} />
+
         <section className="card">
           <h2>You</h2>
           <label className="field">
@@ -48,19 +50,22 @@ export default function Settings({ settings, onChange, toast, update }) {
           </label>
         </section>
 
-        <section className="card">
-          <h2>API keys</h2>
+        <details className="card" open={!settings.core.connected && (settings.ownKeys.deepgram || settings.ownKeys.anthropic)}>
+          <summary>
+            <h2>Your own API keys</h2>
+            <span className="muted small">{settings.core.connected ? 'Not needed while signed in to CG Core' : 'Advanced: only if you are not using CG Core'}</span>
+          </summary>
           <p className="muted small">
-            Keys are stored on this computer only{settings.encryptionAvailable ? ', encrypted with your system keychain' : ''}. Admins can also set
-            <code> DEEPGRAM_API_KEY</code> and <code>ANTHROPIC_API_KEY</code> environment variables.
+            If you add a key here, Trailmix uses it instead of CG Core for that service.{' '}
+            Keys are stored on this computer only{settings.encryptionAvailable ? ', encrypted with your system keychain' : ''}.
           </p>
           {[
-            ['deepgramKey', 'Deepgram (transcription)', settings.hasDeepgramKey, 'https://console.deepgram.com'],
-            ['anthropicKey', 'Anthropic (AI notes and chat)', settings.hasAnthropicKey, 'https://platform.claude.com'],
+            ['deepgramKey', 'Deepgram (transcription)', settings.ownKeys.deepgram, 'https://console.deepgram.com'],
+            ['anthropicKey', 'Anthropic (AI notes and chat)', settings.ownKeys.anthropic, 'https://platform.claude.com'],
           ].map(([k, label, has, url]) => (
             <div className="field" key={k}>
               <span>
-                {label} {has ? <span className="chip ok tiny">Saved</span> : <span className="chip warn tiny">Missing</span>}
+                {label} {has ? <span className="chip ok tiny">Saved</span> : <span className="chip tiny">Not set</span>}
               </span>
               <div className="row gap-s">
                 <input type="password" value={keys[k]} onChange={(e) => setKeys({ ...keys, [k]: e.target.value })} placeholder={has ? '•••••••• (enter a new key to replace)' : 'Paste key'} />
@@ -85,7 +90,7 @@ export default function Settings({ settings, onChange, toast, update }) {
               </a>
             </div>
           ))}
-        </section>
+        </details>
 
         <section className="card">
           <h2>Transcription</h2>
@@ -117,7 +122,7 @@ export default function Settings({ settings, onChange, toast, update }) {
             <label className="field">
               <span>Claude model</span>
               <select className="select" value={draft.claudeModel} onChange={(e) => save({ claudeModel: e.target.value })}>
-                {MODELS.map(([v, l]) => (
+                {modelOptions(settings).map(([v, l]) => (
                   <option key={v} value={v}>
                     {l}
                   </option>
@@ -194,6 +199,114 @@ export default function Settings({ settings, onChange, toast, update }) {
         </section>
       </div>
     </main>
+  );
+}
+
+function modelOptions(settings) {
+  const allowed = settings.core.connected && !settings.ownKeys.anthropic ? settings.core.config?.claudeModels : null;
+  if (!allowed?.length) return MODELS;
+  return allowed.map((id) => MODELS.find(([v]) => v === id) || [id, id]);
+}
+
+function CoreCard({ core, ownKeys, toast }) {
+  const [urls, setUrls] = useState(null);
+  const [server, setServer] = useState('production');
+  const [waiting, setWaiting] = useState(false);
+  const [code, setCode] = useState('');
+
+  useEffect(() => {
+    api.core.urls().then((u) => {
+      setUrls(u);
+      const match = Object.entries(u).find(([, url]) => url === core.url);
+      if (match) setServer(match[0]);
+    });
+    return api.core.onStatus((st) => {
+      setWaiting(!!st.pairing);
+      if (st.justConnected || st.error) setCode('');
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const start = async () => {
+    try {
+      await api.core.connect({ url: urls?.[server] });
+      setWaiting(true);
+    } catch (e) {
+      toast(errMsg(e));
+    }
+  };
+
+  if (core.connected) {
+    const f = core.features || {};
+    return (
+      <section className="card core-card">
+        <h2>CG Core</h2>
+        <p>
+          Signed in as <b>{core.staff?.name || 'staff member'}</b> {core.staff?.email && <span className="muted">({core.staff.email})</span>}
+          {core.device?.name && <span className="muted small"> on {core.device.name}</span>}
+        </p>
+        <div className="row gap-s wrap">
+          <span className={`chip tiny ${f.deepgram === false ? 'warn' : 'ok'}`}>{f.deepgram === false ? 'Transcription not set up in Core' : 'Transcription'}</span>
+          <span className={`chip tiny ${f.claude === false ? 'warn' : 'ok'}`}>{f.claude === false ? 'AI not set up in Core' : 'AI notes and chat'}</span>
+          {(ownKeys.deepgram || ownKeys.anthropic) && <span className="chip tiny">Your own key overrides Core for {[ownKeys.deepgram && 'transcription', ownKeys.anthropic && 'AI'].filter(Boolean).join(' and ')}</span>}
+        </div>
+        <p className="muted small">
+          Company keys stay in CG Core; nothing secret is stored on this computer except a device sign-in you can revoke in Core. {core.url !== urls?.production && <b>Connected to staging.</b>}
+        </p>
+        <div className="row gap-s">
+          <button className="btn small" onClick={() => api.core.refresh()}>
+            Refresh
+          </button>
+          <button className="btn small ghost" onClick={() => window.confirm('Sign this computer out of CG Core?') && api.core.signout()}>
+            Sign out
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card core-card">
+      <h2>Sign in with CG Core</h2>
+      <p className="muted small">
+        Use your CG Technologies Microsoft 365 account. Trailmix then uses the company's transcription and AI service through CG Core, so you don't need API keys.
+      </p>
+      {!waiting ? (
+        <div className="row gap-s">
+          <button className="btn primary" onClick={start}>
+            Sign in with CG Core
+          </button>
+          <select className="select" value={server} onChange={(e) => setServer(e.target.value)} title="CG Core server">
+            <option value="production">core.cgtechnologies.com</option>
+            <option value="staging">Staging</option>
+          </select>
+        </div>
+      ) : (
+        <div className="pairing">
+          <p className="small">
+            <b>Finish in your browser.</b> Click <b>Connect</b> in CG Core and Trailmix will sign in automatically.
+          </p>
+          <form
+            className="row gap-s"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                await api.core.pairCode(code);
+              } catch (err) {
+                toast(errMsg(err));
+              }
+            }}
+          >
+            <input className="code-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Or paste the code CG Core shows" />
+            <button className="btn" disabled={!code.trim()}>
+              Connect
+            </button>
+            <button type="button" className="btn ghost" onClick={() => api.core.cancel()}>
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
+    </section>
   );
 }
 

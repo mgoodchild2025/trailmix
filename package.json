@@ -71,6 +71,14 @@
         "repo": "trailmix",
         "releaseType": "draft"
       }
+    ],
+    "protocols": [
+      {
+        "name": "Trailmix",
+        "schemes": [
+          "trailmix"
+        ]
+      }
     ]
   },
   "dependencies": {

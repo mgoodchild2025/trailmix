@@ -51,7 +51,38 @@ test('reports a rejected key as a fatal error', async () => {
   const s = new TranscriptionSession({ apiKey: 'bad', url: `ws://127.0.0.1:${port}` });
   const err = new Promise((r) => s.once('error', r));
   s.start();
-  assert.match((await err).message, /rejected the API key/);
+  assert.match((await err).message, /rejected your own Deepgram key/);
   await s.stop();
   srv.close();
+});
+
+test('asks for fresh credentials on every connection', async () => {
+  const wss = new WebSocketServer({ port: 0 });
+  const auths = [];
+  let conns = 0;
+  wss.on('connection', (ws, req) => {
+    auths.push(req.headers.authorization);
+    if (++conns === 1) ws.terminate(); // force a reconnect
+  });
+  let n = 0;
+  const s = new TranscriptionSession({ authorize: async () => `Bearer temp-${++n}`, url: `ws://127.0.0.1:${wss.address().port}` });
+  const reopened = new Promise((r) => s.on('status', (st) => st.state === 'open' && conns === 2 && r()));
+  s.start();
+  await reopened;
+  await s.stop();
+  wss.close();
+  assert.deepEqual(auths, ['Bearer temp-1', 'Bearer temp-2']);
+});
+
+test('a revoked CG Core sign-in stops instead of retrying', async () => {
+  const s = new TranscriptionSession({
+    authorize: async () => {
+      throw Object.assign(new Error('Your CG Core sign-in has expired'), { status: 401 });
+    },
+    url: 'ws://127.0.0.1:9',
+  });
+  const err = new Promise((r) => s.once('error', r));
+  s.start();
+  assert.match((await err).message, /sign-in has expired/);
+  await s.stop();
 });

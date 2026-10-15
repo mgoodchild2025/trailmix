@@ -22,7 +22,17 @@ function createDemoBridge() {
     hasDeepgramKey: true,
     hasAnthropicKey: true,
     encryptionAvailable: true,
+    ownKeys: { deepgram: false, anthropic: false },
+    core: {
+      connected: true,
+      url: 'https://core.cgtechnologies.com',
+      staff: { name: 'Matt Goodchild', email: 'matt@example.com' },
+      device: { name: "Matt's MacBook Air" },
+      features: { claude: true, deepgram: true },
+      config: { claudeModels: ['claude-opus-5-5', 'claude-sonnet-5-5'], defaultClaudeModel: 'claude-opus-5-5' },
+    },
   };
+  const coreListeners = new Set();
   const seg = (channel, speaker, start, text) => ({ id: `${start}`, channel, speaker, start, end: start + 6, text });
   const meetings = new Map(
     [
@@ -165,6 +175,25 @@ function createDemoBridge() {
       },
       cancel: async () => {},
       onDelta: (cb) => (listeners.ai.add(cb), () => listeners.ai.delete(cb)),
+    },
+    core: {
+      urls: async () => ({ production: 'https://core.cgtechnologies.com', staging: 'https://core-staging.cgtechnologies.com' }),
+      connect: async () => {
+        setTimeout(() => {
+          settings = { ...settings, core: { ...settings.core, connected: true }, hasDeepgramKey: true, hasAnthropicKey: true };
+          coreListeners.forEach((cb) => cb({ ...settings.core, justConnected: true }));
+        }, 1500);
+        coreListeners.forEach((cb) => cb({ ...settings.core, pairing: true }));
+        return true;
+      },
+      pairCode: async () => {},
+      cancel: async () => coreListeners.forEach((cb) => cb({ ...settings.core, pairing: false })),
+      refresh: async () => {},
+      signout: async () => {
+        settings = { ...settings, core: { connected: false, url: settings.core.url }, hasDeepgramKey: false, hasAnthropicKey: false };
+        coreListeners.forEach((cb) => cb(settings.core));
+      },
+      onStatus: (cb) => (coreListeners.add(cb), () => coreListeners.delete(cb)),
     },
     updates: {
       status: async () => ({ state: 'dev', version: '0.1.0' }),

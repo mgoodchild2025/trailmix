@@ -27,11 +27,21 @@ npm run web        # UI only in a browser with demo data (no keys/mic needed)
 npm test           # unit tests
 ```
 
-In the app, open **Settings** and add:
-- a **Deepgram** API key (console.deepgram.com)
-- an **Anthropic** API key (platform.claude.com)
+### Signing in (staff)
 
-Keys are encrypted with the OS keychain (`safeStorage`). For a managed rollout you can instead set `DEEPGRAM_API_KEY` and `ANTHROPIC_API_KEY` as environment variables on staff machines.
+Staff use **Settings → Sign in with CG Core**. This opens CG Core in the browser, where they sign in with Microsoft 365 and click **Connect**, and Trailmix signs in through a `trailmix://` link. CG Core holds the Anthropic and Deepgram keys:
+- Claude calls are proxied through Core.
+- Deepgram gets a short-lived token per connection.
+- Usage is logged per person in Core.
+- Disabling someone in Core cuts off their access.
+
+The laptop only stores a revocable device token, encrypted with the OS keychain. The API contract is in [docs/cg-core-api.md](docs/cg-core-api.md).
+
+In development builds the `trailmix://` link isn't registered, so paste the code CG Core shows into Settings instead.
+
+### Your own keys (optional)
+
+Under **Settings → Your own API keys** you can add a Deepgram and/or Anthropic key. These are useful for development or without CG Core, and an own key overrides Core for that service.
 
 Add client names, vendors and product names under **Settings → Custom vocabulary** so the transcript spells them correctly.
 

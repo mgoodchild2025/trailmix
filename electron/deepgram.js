@@ -7,9 +7,12 @@ const MAX_QUEUE_BYTES = 4 * 1024 * 1024;
 const MAX_RETRIES = 6;
 
 export class TranscriptionSession extends EventEmitter {
-  constructor({ apiKey, model = 'nova-3', language = 'en', keyterms = [], sampleRate = 16000, offsetSec = 0, url }) {
+  // `authorize` returns the Authorization header for each new connection, e.g. a fresh
+  // short-lived token from CG Core. `apiKey` is the simple alternative for a user's own key.
+  constructor({ apiKey, authorize, source = authorize ? 'core' : 'own', model = 'nova-3', language = 'en', keyterms = [], sampleRate = 16000, offsetSec = 0, url }) {
     super();
-    Object.assign(this, { apiKey, model, language, keyterms, sampleRate, offsetSec });
+    Object.assign(this, { model, language, keyterms, sampleRate, offsetSec, source });
+    this.authorize = authorize || (async () => `Token ${apiKey}`);
     this.baseUrl = url || 'wss://api.deepgram.com/v1/listen';
     this.queue = [];
     this.queuedBytes = 0;
@@ -50,11 +53,23 @@ export class TranscriptionSession extends EventEmitter {
     }, 4000);
   }
 
-  connect() {
+  async connect() {
     this.connOffset = this.offsetSec + this.bytesSent / this.bytesPerSec;
-    const ws = new WebSocket(this.url(), { headers: { Authorization: `Token ${this.apiKey}` } });
-    this.ws = ws;
     this.emit('status', { state: 'connecting' });
+    let authorization;
+    try {
+      authorization = await this.authorize();
+    } catch (err) {
+      // A revoked sign-in or missing setup won't fix itself; network blips might.
+      if (err.status === 401 || err.status === 503 || err.status === 403) {
+        this.fatal = true;
+        this.emit('error', err);
+      } else this.scheduleReconnect(err.message);
+      return;
+    }
+    if (this.stopping) return;
+    const ws = new WebSocket(this.url(), { headers: { Authorization: authorization } });
+    this.ws = ws;
 
     ws.on('open', () => {
       this.retries = 0;
@@ -87,7 +102,9 @@ export class TranscriptionSession extends EventEmitter {
     ws.on('unexpected-response', (_req, res) => {
       const msg =
         res.statusCode === 401
-          ? 'Deepgram rejected the API key. Check it in Settings.'
+          ? this.source === 'own'
+            ? 'Deepgram rejected your own Deepgram key (Settings → Your own API keys). Remove it to use CG Core instead.'
+            : "Deepgram rejected CG Core's transcription token. Ask a CG Core admin to check the Deepgram key in Core."
           : `Deepgram refused the connection (HTTP ${res.statusCode}).`;
       this.fatal = true;
       this.emit('error', new Error(msg));
@@ -102,14 +119,19 @@ export class TranscriptionSession extends EventEmitter {
         this.emit('status', { state: 'closed' });
         return;
       }
-      if (this.retries >= MAX_RETRIES) {
-        this.emit('error', new Error('Lost connection to Deepgram and could not reconnect.'));
-        return;
-      }
-      const delay = Math.min(500 * 2 ** this.retries++, 8000);
-      this.emit('status', { state: 'reconnecting', inMs: delay });
-      setTimeout(() => !this.stopping && this.connect(), delay);
+      this.scheduleReconnect();
     });
+  }
+
+  scheduleReconnect(reason) {
+    if (this.retries >= MAX_RETRIES) {
+      this.fatal = true;
+      this.emit('error', new Error(`Lost connection to Deepgram and could not reconnect${reason ? ` (${reason})` : ''}.`));
+      return;
+    }
+    const delay = Math.min(500 * 2 ** this.retries++, 8000);
+    this.emit('status', { state: 'reconnecting', inMs: delay });
+    setTimeout(() => !this.stopping && this.connect(), delay);
   }
 
   rawSend(buf) {
