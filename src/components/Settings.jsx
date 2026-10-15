@@ -252,6 +252,7 @@ function CoreCard({ core, ownKeys, toast }) {
         <p className="muted small">
           Company keys stay in CG Core; nothing secret is stored on this computer except a device sign-in you can revoke in Core. {core.url !== urls?.production && <b>Connected to staging.</b>}
         </p>
+        <SyncLine available={f.sync === true} />
         <div className="row gap-s">
           <button className="btn small" onClick={() => api.core.refresh()}>
             Refresh
@@ -307,6 +308,37 @@ function CoreCard({ core, ownKeys, toast }) {
         </div>
       )}
     </section>
+  );
+}
+
+function SyncLine({ available }) {
+  const [st, setSt] = useState(null);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    api.sync.status().then(setSt);
+    const off = api.sync.onStatus(setSt);
+    const t = setInterval(() => tick((n) => n + 1), 30000);
+    return () => {
+      off();
+      clearInterval(t);
+    };
+  }, []);
+  if (!available) return <p className="muted small">Meeting sync between your devices isn't available on this CG Core yet.</p>;
+  const ago = (ts) => {
+    const m = Math.round((Date.now() - ts) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  };
+  return (
+    <div className="row gap-s wrap small sync-line">
+      <span className={`chip tiny ${st?.error ? 'warn' : 'ok'}`}>{st?.syncing ? 'Syncing…' : st?.error ? 'Sync problem' : 'Meetings sync with your other devices'}</span>
+      <span className="muted">
+        {st?.error ? st.error : st?.lastSyncAt ? `Last synced ${ago(st.lastSyncAt)}` : 'Not synced yet'}
+        {st?.pending ? ` · ${st.pending} waiting` : ''}
+      </span>
+      <button className="link small" onClick={() => api.sync.now()} disabled={st?.syncing}>
+        Sync now
+      </button>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { touch } from '../shared/sync.js';
 
 const SECRET_KEYS = ['deepgramKey', 'anthropicKey', 'coreToken'];
 export const CORE_DEFAULT_URL = 'https://core.cgtechnologies.com';
@@ -128,8 +129,10 @@ export class Store {
       enhanced: '',
       templateId: null,
       chat: [],
+      source: 'desktop',
       ...fields,
     };
+    touch(m, ['title', 'notes', 'enhanced', 'templateId', 'chat'], now);
     this.cache.set(m.id, m);
     this.flush(m.id);
     return m;
@@ -202,6 +205,12 @@ export class Store {
     m.transcript.push(seg);
     m.updatedAt = Date.now();
     this.scheduleFlush(id);
+  }
+
+  // A copy merged or pulled by sync replaces the local one.
+  replace(doc) {
+    this.cache.set(doc.id, doc);
+    this.flush(doc.id);
   }
 
   // Deleting moves the file to a trash folder rather than destroying it.

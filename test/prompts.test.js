@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enhanceUserMessage, libraryContext } from '../electron/prompts.js';
+import { enhanceUserMessage, libraryContext } from '../shared/prompts.js';
 import { findTemplate } from '../shared/templates.js';
 
 const meeting = (over = {}) => ({

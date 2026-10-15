@@ -1,8 +1,10 @@
 // Transcript helpers shared by the main process (prompts) and the renderer (display).
 //
-// A segment is { id, channel, speaker, text, start, end }.
+// A segment is { id, channel, speaker, text, start, end, mono? }.
 //   channel 0 = the note-taker's microphone ("Me")
 //   channel 1 = system audio, i.e. everyone else on the call ("Them")
+//   mono: true = recorded on one microphone (the phone app), so the channel says
+//   nothing about who spoke; speakers come from diarisation only.
 
 export const ME = 0;
 export const THEM = 1;
@@ -24,9 +26,9 @@ function similarity(a, b) {
 // the "Me" channel. Flag mic segments that overlap a system-audio segment in time
 // and mostly repeat its words.
 export function markEchoes(segments, threshold = 0.6) {
-  const them = segments.filter((s) => s.channel === THEM);
+  const them = segments.filter((s) => s.channel === THEM && !s.mono);
   return segments.map((s) => {
-    if (s.channel !== ME) return s;
+    if (s.channel !== ME || s.mono) return s;
     const echo = them.some(
       (t) =>
         t.start < s.end + 1.5 &&
@@ -39,6 +41,7 @@ export function markEchoes(segments, threshold = 0.6) {
 }
 
 export function speakerLabel(seg, myName = 'Me') {
+  if (seg.mono) return seg.speaker != null ? `Speaker ${seg.speaker + 1}` : 'Speaker';
   if (seg.channel === ME) return myName || 'Me';
   return seg.speaker != null ? `Speaker ${seg.speaker + 1}` : 'Them';
 }
@@ -75,6 +78,8 @@ export function transcriptToText(segments, myName) {
     .map((t) => `[${formatTime(t.start)}] ${t.who}: ${t.text}`)
     .join('\n');
 }
+
+export const isMono = (segments = []) => segments.some((s) => s.mono);
 
 export function durationOf(segments) {
   return segments.reduce((max, s) => Math.max(max, s.end || 0), 0);

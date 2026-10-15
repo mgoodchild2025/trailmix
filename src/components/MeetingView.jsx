@@ -56,6 +56,25 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
     [id],
   );
 
+  // Changes synced from another device. Fields with an unsaved local edit are kept.
+  useEffect(
+    () =>
+      api.meetings.onChanged(({ updated }) => {
+        if (updated !== id) return;
+        api.meetings.get(id).then((fresh) =>
+          setMeeting((cur) => {
+            if (!cur) return cur;
+            const next = { ...cur };
+            for (const k of ['title', 'notes', 'enhanced', 'templateId', 'chat', 'transcript', 'share']) {
+              if (!(k in pendingPatch.current)) next[k] = fresh[k];
+            }
+            return next;
+          }),
+        );
+      }),
+    [id],
+  );
+
   // ---- saving ----
   const flush = useCallback(() => {
     clearTimeout(saveTimer.current);

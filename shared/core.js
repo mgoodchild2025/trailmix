@@ -1,6 +1,7 @@
-// Client for the CG Core Trailmix API (docs/cg-core-api.md). CG Core signs staff in with
-// Microsoft 365 and holds the Anthropic and Deepgram keys; Trailmix holds only a
-// per-device token.
+// Client for the CG Core Trailmix API (docs/cg-core-api.md), shared by the desktop and
+// mobile apps. CG Core signs staff in with Microsoft 365 and holds the Anthropic and
+// Deepgram keys; Trailmix holds only a per-device token. Pass `fetchImpl` on platforms
+// whose global fetch can't stream (React Native: expo/fetch).
 
 export const CORE_URLS = {
   production: 'https://core.cgtechnologies.com',
@@ -43,6 +44,7 @@ export function parseConnectLink(link) {
 
 async function errorFrom(res) {
   let body = {};
+  // Callers that resolve conflicts need the response body (409 carries the current copy).
   try {
     body = await res.json();
   } catch {}
@@ -52,7 +54,7 @@ async function errorFrom(res) {
   if (res.status === 401) message = 'Your CG Core sign-in has expired or was revoked. Sign in again in Settings.';
   else if (res.status === 429) message = `CG Core rate limit reached. Try again${retryAfter ? ` in ${Math.ceil(retryAfter / 60)} min` : ' shortly'}.`;
   else if (res.status === 503 && code === 'not_configured') message = `${body.error || 'This feature is not set up in CG Core yet'}. Ask a CG Core admin.`;
-  return new CoreError(message, { status: res.status, code, retryAfter });
+  return Object.assign(new CoreError(message, { status: res.status, code, retryAfter }), { body });
 }
 
 export async function pair(baseUrl, { code, state, deviceName, platform, appVersion }, fetchImpl = fetch) {
@@ -98,6 +100,22 @@ export class CoreClient {
     return (await this.request('/api/trailmix/v1/deepgram-token', { method: 'POST' })).json();
   }
 
+  // Meeting sync (docs/cg-core-api.md section 5). The SyncEngine in shared/sync.js
+  // drives these; errors keep .status and .body for its conflict handling.
+  async listMeetings(cursor, limit = 100) {
+    const q = new URLSearchParams({ limit: String(limit), ...(cursor ? { since: cursor } : {}) });
+    return (await this.request(`/api/trailmix/v1/meetings?${q}`)).json();
+  }
+
+  async putMeeting(id, ifVersion, doc) {
+    return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}`, { method: 'PUT', body: { ifVersion, doc } })).json();
+  }
+
+  async deleteMeeting(id, ifVersion) {
+    const q = ifVersion != null ? `?ifVersion=${ifVersion}` : '';
+    return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}${q}`, { method: 'DELETE' })).json();
+  }
+
   async signout() {
     await this.request('/api/trailmix/v1/signout', { method: 'POST' });
   }
@@ -131,10 +149,26 @@ export class CoreClient {
   }
 }
 
+// Accepts a Node/web stream that's async-iterable or exposes getReader() (React Native).
+async function* chunksOf(body) {
+  if (body?.getReader) {
+    const reader = body.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+  } else yield* body;
+}
+
 export async function* readNdjson(body) {
   const decoder = new TextDecoder();
   let buf = '';
-  for await (const chunk of body) {
+  for await (const chunk of chunksOf(body)) {
     buf += decoder.decode(chunk, { stream: true });
     let i;
     while ((i = buf.indexOf('\n')) >= 0) {

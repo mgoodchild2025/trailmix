@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('trailmix', {
     signout: invoke('core:signout'),
     onStatus: (cb) => on('core:status', cb),
   },
+  sync: {
+    status: invoke('sync:status'),
+    now: invoke('sync:now'),
+    onStatus: (cb) => on('sync:status', cb),
+  },
   updates: {
     status: invoke('update:status'),
     check: invoke('update:check'),
