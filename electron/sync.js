@@ -45,7 +45,12 @@ export function setupSync({ store, coreClient, isRecording, onMeetingsChanged, o
     return c;
   };
 
-  const engine = new SyncEngine({ api, storage, onChange: (ids) => onMeetingsChanged(ids) });
+  // Sync state belongs to one CG Core and one staff member.
+  const account = () => {
+    const st = store.settings();
+    return st.core.connected ? `${st.coreUrl}|${st.core.staff?.id || ''}` : null;
+  };
+  const engine = new SyncEngine({ api, storage, account, onChange: (ids) => onMeetingsChanged(ids) });
   let timer = null;
 
   const enabled = () => {

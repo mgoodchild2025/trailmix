@@ -10,7 +10,14 @@ const client = () => {
   return c;
 };
 
+// Sync state belongs to one CG Core and one staff member.
+const account = () => {
+  const s = getSession();
+  return s.token ? `${s.url}|${s.info?.staff?.id || ''}` : null;
+};
+
 const engine = new SyncEngine({
+  account,
   api: {
     list: (cursor, limit) => client().listMeetings(cursor, limit),
     put: (id, v, doc) => client().putMeeting(id, v, doc),

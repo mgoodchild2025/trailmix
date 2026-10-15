@@ -44,7 +44,7 @@ function fakeCore({ pageSize, reorderKeys = true } = {}) {
   };
 }
 
-function device(api) {
+function device(api, account = () => 'core-a|staff-1') {
   const docs = new Map();
   let state = null;
   const storage = {
@@ -55,7 +55,7 @@ function device(api) {
     remove: (id) => docs.delete(id),
   };
   const changes = [];
-  const engine = new SyncEngine({ api, storage, onChange: (ids) => changes.push(...ids) });
+  const engine = new SyncEngine({ api, storage, account: () => account(), onChange: (ids) => changes.push(...ids) });
   return {
     docs,
     engine,
@@ -192,4 +192,48 @@ test('devices settle: nothing is re-uploaded after a sync with no changes', asyn
     const st = d.engine.state();
     assert.equal(Object.values(st.items).some((i) => i.dirty), false);
   }
+});
+
+test('signing in to a different CG Core starts sync fresh there', async () => {
+  const staging = fakeCore();
+  const production = fakeCore();
+  let where = 'staging';
+  const api = new Proxy({}, { get: (_t, k) => (where === 'staging' ? staging : production)[k] });
+  const d = device(api, () => `${where}|staff-1`);
+  d.edit('m1', { title: 'Made on staging', notes: 'n' }, 1000);
+  for (let i = 0; i < 3; i++) d.edit('m1', { notes: `v${i}` }, 2000 + i), await d.engine.sync();
+  assert.equal(staging.rows.get('m1').version, 3);
+  // Now signed in to production: the staging cursor and version 3 mean nothing there.
+  where = 'production';
+  d.engine.markDirty('m1'); // what the apps do on their first sync after a fresh start
+  await d.engine.sync();
+  assert.equal(production.rows.get('m1').version, 1);
+  assert.equal(production.rows.get('m1').doc.notes, 'v2');
+  assert.equal(d.engine.state().account, 'production|staff-1');
+});
+
+test('a version the server never issued is uploaded as new', async () => {
+  const core = fakeCore();
+  const err = (status, body) => Object.assign(new Error('x'), { status, body });
+  const api = { ...core, put: async (id, v, doc) => (v != null && !core.rows.has(id) ? Promise.reject(err(409, { code: 'conflict', current: null })) : core.put(id, v, doc)) };
+  const d = device(api);
+  d.edit('m1', { title: 't' }, 1000);
+  const st = d.engine.state();
+  st.items.m1 = { version: 7, dirty: true };
+  d.engine.storage.saveState(st);
+  await d.engine.sync();
+  assert.equal(core.rows.get('m1').version, 1);
+});
+
+test('meetings saved before sync existed settle after one upload', async () => {
+  const core = fakeCore();
+  const d = device(core);
+  // An old meeting file: no fieldTimes at all.
+  d.docs.set('old', { id: 'old', title: 'From 0.3', notes: 'n', enhanced: '', transcript: [], chat: [], createdAt: 1, updatedAt: 1 });
+  d.engine.markDirty('old');
+  await d.engine.sync();
+  await d.engine.sync();
+  await d.engine.sync();
+  assert.equal(core.rows.get('old').version, 1);
+  assert.equal(d.engine.state().items.old.dirty, false);
 });

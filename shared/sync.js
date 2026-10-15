@@ -52,8 +52,18 @@ export function canonical(v) {
   return v;
 }
 
+// Meetings saved before sync existed have no fieldTimes, and older ones may lack chat or
+// transcript; a merge fills those in. Treat missing and empty as the same so a merged
+// copy that only gained empty defaults doesn't look like a real change.
+function normalised(doc) {
+  const d = { ...forUpload(doc) };
+  if (!d.fieldTimes || !Object.keys(d.fieldTimes).length) delete d.fieldTimes;
+  for (const k of ['transcript', 'chat']) if (!d[k] || !d[k].length) delete d[k];
+  return canonical(d);
+}
+
 export function sameDoc(a, b) {
-  return JSON.stringify(canonical(forUpload(a))) === JSON.stringify(canonical(forUpload(b)));
+  return JSON.stringify(normalised(a)) === JSON.stringify(normalised(b));
 }
 
 export function forUpload(doc) {
@@ -73,15 +83,23 @@ export function forUpload(doc) {
  * }
  */
 export class SyncEngine {
-  constructor({ api, storage, onChange = () => {}, log = () => {} }) {
-    Object.assign(this, { api, storage, onChange, log });
+  // `account` identifies where and as whom we sync (CG Core address + staff id). Sync state
+  // belongs to one account: after signing in elsewhere, the old cursor and versions mean
+  // nothing, so the device starts fresh there.
+  constructor({ api, storage, account = () => null, onChange = () => {}, log = () => {} }) {
+    Object.assign(this, { api, storage, account, onChange, log });
     this.running = null;
     this.again = false;
   }
 
   state() {
     const s = this.storage.loadState() || {};
-    return { cursor: s.cursor ?? null, items: s.items || {}, lastSyncAt: s.lastSyncAt ?? null, lastError: s.lastError ?? null };
+    const account = this.account();
+    if (account && s.account && s.account !== account) {
+      // Signed in somewhere else: forget the other account's cursor and versions.
+      return { cursor: null, items: {}, lastSyncAt: null, lastError: null, account, fresh: true };
+    }
+    return { cursor: s.cursor ?? null, items: s.items || {}, lastSyncAt: s.lastSyncAt ?? null, lastError: s.lastError ?? null, account: account ?? s.account ?? null };
   }
 
   // Called by the app whenever a meeting changes locally.
@@ -153,6 +171,10 @@ export class SyncEngine {
       s.items[id] = { version: res.version, dirty: false };
     } catch (err) {
       const current = err.status === 409 ? err.body?.current : null;
+      // A version this server never issued (e.g. left over from another account): create it.
+      if (err.status === 409 && !current && it.version != null && attempt <= 2) {
+        return this.pushDoc(s, id, { version: null }, doc, changed, attempt + 1);
+      }
       if (!current || attempt > 2) throw err;
       // Someone else wrote first: merge, keep the merge locally, and try again on top.
       const merged = current.deleted ? doc : mergeMeetings(doc, current.doc);
