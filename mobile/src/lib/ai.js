@@ -5,6 +5,7 @@ import { findTemplate } from '../../../shared/templates.js';
 import { coreClient, getSession } from './session.js';
 import { getMeeting, patchMeeting } from './store.js';
 import { meetingChanged } from './sync.js';
+import { demoAnswer, demoEnhanced, streamText } from './demo.js';
 
 function setup() {
   const core = coreClient();
@@ -15,9 +16,16 @@ function setup() {
 }
 
 export async function enhance(id, templateId, { onDelta, signal } = {}) {
-  const { core, model, myName } = setup();
   const m = getMeeting(id);
   const template = findTemplate(templateId || m.templateId || 'general');
+  if (getSession().demo) {
+    const text = await streamText(demoEnhanced(m), onDelta, signal);
+    const fields = { enhanced: text, templateId: template.id };
+    if (!m.title.trim()) fields.title = text.match(/^#\s+(.+)$/m)?.[1]?.trim();
+    patchMeeting(id, fields);
+    return fields;
+  }
+  const { core, model, myName } = setup();
   const { text } = await core.streamClaude({
     purpose: 'enhance',
     model,
@@ -37,6 +45,7 @@ export async function enhance(id, templateId, { onDelta, signal } = {}) {
 }
 
 export async function ask(id, messages, { onDelta, signal } = {}) {
+  if (getSession().demo) return streamText(demoAnswer, onDelta, signal);
   const { core, model, myName } = setup();
   const { text } = await core.streamClaude({
     purpose: 'chat',

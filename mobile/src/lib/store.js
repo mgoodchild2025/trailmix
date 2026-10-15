@@ -5,9 +5,24 @@ import { touch } from '../../../shared/sync.js';
 
 const dir = new Directory(Paths.document, 'meetings');
 const stateFile = new File(Paths.document, 'sync-state.json');
+import { DEMO_MEETINGS } from './demo.js';
+
 const cache = new Map();
 const listeners = new Set();
 let loaded = false;
+let demo = false;
+
+// In demo mode the store holds sample meetings in memory and never touches disk.
+export function setDemoStore(on) {
+  demo = on;
+  cache.clear();
+  loaded = false;
+  if (on) {
+    for (const m of DEMO_MEETINGS) cache.set(m.id, JSON.parse(JSON.stringify(m)));
+    loaded = true;
+  }
+  emit([]);
+}
 
 const emit = (ids) => listeners.forEach((cb) => cb(ids));
 export const subscribeMeetings = (cb) => (listeners.add(cb), () => listeners.delete(cb));
@@ -31,10 +46,13 @@ const fileFor = (id) => {
 };
 
 function write(m) {
+  if (demo) return;
   const f = fileFor(m.id);
   f.create({ overwrite: true });
   f.write(JSON.stringify(m));
 }
+
+export const isDemoStore = () => demo;
 
 export function listMeetings() {
   load();
@@ -88,8 +106,10 @@ export function replaceMeeting(doc) {
 export function removeMeeting(id) {
   load();
   cache.delete(id);
-  const f = fileFor(id);
-  if (f.exists) f.delete();
+  if (!demo) {
+    const f = fileFor(id);
+    if (f.exists) f.delete();
+  }
   emit([id]);
 }
 

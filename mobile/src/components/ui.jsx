@@ -1,58 +1,77 @@
-import { Pressable, Text, View, StyleSheet } from 'react-native';
-import { useTheme } from '../lib/theme.js';
+import { useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { cubicBezier } from 'react-native-reanimated';
+import { SymbolView } from 'expo-symbols';
+import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { useTheme, type } from '../lib/theme.js';
 
-export function Button({ title, onPress, kind = 'default', disabled, style, small }) {
-  const t = useTheme();
-  const bg = kind === 'primary' ? t.red : kind === 'dark' ? t.ink : 'transparent';
-  const fg = kind === 'primary' ? t.onRed : kind === 'dark' ? t.bg : t.ink;
+// SF Symbol on iOS; nothing (or a fallback) where symbols don't exist.
+export function Symbol({ name, size = 20, color, weight = 'regular', fallback = null, style }) {
+  return <SymbolView name={name} size={size} tintColor={color} weight={weight} fallback={fallback} style={[{ width: size, height: size }, style]} />;
+}
+
+// Feedback on touch-down: 3% scale in 120ms (it's touched often, so it stays subtle).
+export function PressableScale({ onPress, onLongPress, disabled, style, children, hitSlop = 8, accessibilityLabel, accessibilityRole = 'button' }) {
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        s.btn,
-        small && s.small,
-        { backgroundColor: bg, borderColor: kind === 'default' ? t.line2 : bg, opacity: disabled ? 0.45 : pressed ? 0.75 : 1 },
-        style,
-      ]}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      hitSlop={hitSlop}
+      pressRetentionOffset={16}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: !!disabled }}
     >
-      <Text style={[s.btnText, small && s.smallText, { color: fg }]}>{title}</Text>
+      <Animated.View style={[s.press, pressed && s.pressed, disabled && { opacity: 0.4 }, style]}>{children}</Animated.View>
     </Pressable>
   );
 }
 
-export function Chip({ label, tone }) {
+// Primary / secondary capsule buttons.
+export function Button({ title, icon, onPress, kind = 'secondary', disabled, style }) {
   const t = useTheme();
-  const c = tone === 'ok' ? t.ok : tone === 'warn' ? t.warn : t.ink3;
+  const primary = kind === 'primary';
+  const fg = primary ? t.onRed : t.label;
   return (
-    <View style={[s.chip, { borderColor: t.line }]}>
-      <Text style={[s.chipText, { color: c }]}>{label}</Text>
-    </View>
+    <PressableScale onPress={onPress} disabled={disabled} style={[s.btn, { backgroundColor: primary ? t.red : t.fill }, style]} accessibilityLabel={title}>
+      <View style={s.btnInner}>
+        {icon ? <Symbol name={icon} size={17} color={fg} weight="semibold" /> : null}
+        <Text style={[type.headline, { color: fg }]}>{title}</Text>
+      </View>
+    </PressableScale>
   );
 }
 
-export function Segmented({ options, value, onChange }) {
-  const t = useTheme();
+// Liquid Glass where the OS has it (iOS 26+), a blur material otherwise.
+export function Glass({ style, children, tint }) {
+  if (Platform.OS === 'ios' && isLiquidGlassAvailable()) {
+    return (
+      <GlassView style={style} glassEffectStyle="regular" tintColor={tint}>
+        {children}
+      </GlassView>
+    );
+  }
   return (
-    <View style={[s.seg, { backgroundColor: t.sunk }]}>
-      {options.map(([v, label]) => (
-        <Pressable key={v} onPress={() => onChange(v)} style={[s.segItem, value === v && { backgroundColor: t.bg }]} accessibilityRole="tab" accessibilityState={{ selected: value === v }}>
-          <Text style={[s.segText, { color: value === v ? t.ink : t.ink3 }]}>{label}</Text>
-        </Pressable>
-      ))}
-    </View>
+    <BlurView intensity={60} tint="systemChromeMaterial" style={[style, { overflow: 'hidden' }]}>
+      {children}
+    </BlurView>
   );
+}
+
+export function SectionHeader({ children }) {
+  const t = useTheme();
+  return <Text style={[type.footnote, s.sectionHeader, { color: t.label2 }]}>{children}</Text>;
 }
 
 const s = StyleSheet.create({
-  btn: { minHeight: 48, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  small: { minHeight: 36, paddingHorizontal: 12, borderRadius: 10 },
-  btnText: { fontSize: 16, fontWeight: '600' },
-  smallText: { fontSize: 14 },
-  chip: { borderWidth: 1, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 1 },
-  chipText: { fontSize: 11, fontWeight: '600' },
-  seg: { flexDirection: 'row', borderRadius: 10, padding: 3 },
-  segItem: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
-  segText: { fontSize: 14, fontWeight: '600' },
+  press: { transform: [{ scale: 1 }], transitionProperty: 'transform', transitionDuration: '120ms', transitionTimingFunction: cubicBezier(0.23, 1, 0.32, 1) },
+  pressed: { transform: [{ scale: 0.97 }] },
+  btn: { minHeight: 50, borderRadius: 25, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
+  btnInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionHeader: { textTransform: 'uppercase', paddingHorizontal: 20, paddingTop: 22, paddingBottom: 7 },
 });

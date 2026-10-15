@@ -40,7 +40,7 @@ export const subscribeSync = (cb) => (statusListeners.add(cb), cb(status), () =>
 
 const enabled = () => {
   const s = getSession();
-  return !!s.token && s.info?.features?.sync === true;
+  return !s.demo && !!s.token && s.info?.features?.sync === true;
 };
 
 export async function syncNow() {
@@ -62,11 +62,13 @@ export async function syncNow() {
 }
 
 export function meetingChanged(id, { recording = false } = {}) {
+  if (getSession().demo) return;
   engine.markDirty(id);
   if (enabled() && !timer) timer = setTimeout(syncNow, recording ? 30000 : 3000);
 }
 
 export function meetingDeleted(id) {
+  if (getSession().demo) return;
   engine.markDeleted(id);
   if (enabled()) setTimeout(syncNow, 1000);
 }

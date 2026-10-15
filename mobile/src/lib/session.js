@@ -11,7 +11,7 @@ const TOKEN = 'trailmix.coreToken';
 const INFO = 'trailmix.coreInfo';
 const URL_KEY = 'trailmix.coreUrl';
 
-let state = { loaded: false, url: CORE_URLS.production, token: null, info: null };
+let state = { loaded: false, url: CORE_URLS.production, token: null, info: null, demo: false };
 const listeners = new Set();
 const emit = () => listeners.forEach((cb) => cb(state));
 
@@ -63,8 +63,24 @@ export async function refreshSession() {
 }
 
 export async function signOut() {
+  if (state.demo) return endDemo();
   await coreClient()?.signout().catch(() => {});
   await signOutLocal();
+}
+
+// Demo mode: no account, nothing leaves the phone, nothing is saved.
+export function startDemo() {
+  state = {
+    ...state,
+    demo: true,
+    info: { staff: { name: 'Alex Morgan' }, features: { claude: true, deepgram: true, sync: false }, config: {} },
+  };
+  emit();
+}
+
+function endDemo() {
+  state = { ...state, demo: false, info: null };
+  emit();
 }
 
 async function signOutLocal() {
