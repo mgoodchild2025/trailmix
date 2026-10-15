@@ -12,13 +12,14 @@
 //   node scripts/asc.mjs add <build> <group>     add a build to a group
 //   node scripts/asc.mjs review-info             set beta description / review notes (see below)
 //   node scripts/asc.mjs submit <build>          submit a build for Beta App Review
+//   node scripts/asc.mjs reviews                 review state and groups of recent builds
 //   node scripts/asc.mjs public-link <group> on|off
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const KEY_ID = process.env.ASC_KEY_ID || 'BGAC96S6Z4';
+const KEY_ID = process.env.ASC_KEY_ID || 'R4RRZDN7S8';
 const ISSUER = process.env.ASC_ISSUER_ID || '332f6085-9569-4d59-92f0-09e19da628cd';
 const KEY_PATH = process.env.ASC_KEY_PATH || path.join(os.homedir(), '.private_keys', `AuthKey_${KEY_ID}.p8`);
 const BUNDLE_ID = 'com.cgtechnologies.trailmix.mobile';
@@ -157,6 +158,29 @@ switch (cmd) {
     console.log(`build ${args[0]} submitted for Beta App Review`);
     break;
   }
+  case 'expire': {
+    // Removes a build from TestFlight (and from beta review). Can't be undone for that build.
+    const b = await build(a.id, args[0]);
+    await api('PATCH', `/v1/builds/${b.id}`, { data: { type: 'builds', id: b.id, attributes: { expired: true } } });
+    console.log(`build ${args[0]} expired`);
+    break;
+  }
+  case 'reviews': {
+    // Beta App Review state of recent builds (and which group each build is in).
+    const b = await api('GET', `/v1/builds?filter[app]=${a.id}&sort=-uploadedDate&limit=10&fields[builds]=version`);
+    for (const x of b.data) {
+      const r = await api('GET', `/v1/builds/${x.id}/betaAppReviewSubmission`).catch(() => null);
+      // Apple doesn't list a build's groups from the build side; ask each group instead.
+      const g = { data: [] };
+      for (const grp of await groups(a.id)) {
+        const inG = await api('GET', `/v1/betaGroups/${grp.id}/builds?fields[builds]=version&limit=50`).catch(() => ({ data: [] }));
+        if (inG.data.some((y) => y.id === x.id)) g.data.push(grp);
+      }
+      const state = r?.data?.attributes?.betaReviewState || 'not submitted';
+      console.log(`  build ${x.attributes.version}: ${state}${r?.data?.attributes?.submittedDate ? ` (submitted ${r.data.attributes.submittedDate})` : ''}; groups: ${g.data.map((y) => y.attributes.name).join(', ') || 'none'}`);
+    }
+    break;
+  }
   case 'public-link': {
     const g = await group(a.id, args.slice(0, -1).join(' '));
     const on = args.at(-1) === 'on';
@@ -165,5 +189,5 @@ switch (cmd) {
     break;
   }
   default:
-    console.log('commands: status | wait <build> | whats-new <build> <text> | ensure-group <name> | add <build> <group> | review-info | submit <build> | public-link <group> on|off');
+    console.log('commands: status | reviews | expire <build> | wait <build> | whats-new <build> <text> | ensure-group <name> | add <build> <group> | review-info | submit <build> | public-link <group> on|off');
 }
