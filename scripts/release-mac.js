@@ -16,6 +16,23 @@ sh('npx electron-builder --mac --universal --publish never', {
   env: { ...process.env, APPLE_KEYCHAIN_PROFILE: 'trailmix-notary' },
 });
 
+// electron-builder notarises the app but not the disk image; do that too, so a .dmg
+// downloaded from GitHub opens without a Gatekeeper warning. Stapling changes the file,
+// so refresh its checksum in latest-mac.yml.
+const dmg = `release/Trailmix-${version}-universal.dmg`;
+console.log('\nNotarising the disk image…');
+sh(`xcrun notarytool submit "${dmg}" --keychain-profile trailmix-notary --wait`, { stdio: 'inherit' });
+sh(`xcrun stapler staple "${dmg}"`, { stdio: 'inherit' });
+{
+  const { createHash } = await import('node:crypto');
+  const buf = fs.readFileSync(dmg);
+  const sha = createHash('sha512').update(buf).digest('base64');
+  const yml = fs.readFileSync('release/latest-mac.yml', 'utf8');
+  const entry = new RegExp(`(- url: Trailmix-${version.replace(/\./g, '\\.')}-universal\\.dmg\\n\\s+sha512: )\\S+(\\n\\s+size: )\\d+`);
+  if (!entry.test(yml)) throw new Error('Could not find the .dmg entry in latest-mac.yml');
+  fs.writeFileSync('release/latest-mac.yml', yml.replace(entry, (_m, a, b) => `${a}${sha}${b}${buf.length}`));
+}
+
 const files = [
   'latest-mac.yml',
   `Trailmix-${version}-universal-mac.zip`,
