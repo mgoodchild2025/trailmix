@@ -252,6 +252,7 @@ function registerIpc() {
             }
           }
         : async () => `Token ${deepgramKey}`,
+      source: viaCore ? 'core' : 'own',
       model: org.deepgramModel || s.deepgramModel,
       language: org.language || s.language,
       keyterms: keyterms.slice(0, 50),

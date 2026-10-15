@@ -51,7 +51,7 @@ test('reports a rejected key as a fatal error', async () => {
   const s = new TranscriptionSession({ apiKey: 'bad', url: `ws://127.0.0.1:${port}` });
   const err = new Promise((r) => s.once('error', r));
   s.start();
-  assert.match((await err).message, /rejected the credentials/);
+  assert.match((await err).message, /rejected your own Deepgram key/);
   await s.stop();
   srv.close();
 });
