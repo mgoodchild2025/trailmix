@@ -33,6 +33,7 @@ function createDemoBridge() {
     },
   };
   const coreListeners = new Set();
+  const changeListeners = new Set();
   const seg = (channel, speaker, start, text) => ({ id: `${start}`, channel, speaker, start, end: start + 6, text });
   const meetings = new Map(
     [
@@ -117,8 +118,22 @@ function createDemoBridge() {
         return structuredClone(m);
       },
       patch: async (id, f) => Object.assign(meetings.get(id), f, { updatedAt: Date.now() }) && true,
-      remove: async (id) => meetings.delete(id),
+      remove: async (id) => {
+        meetings.delete(id);
+        changeListeners.forEach((cb) => cb({ deleted: id }));
+        return true;
+      },
+      // No native menus in a browser: offer delete only.
+      menu: async ({ id }) => {
+        const m = meetings.get(id);
+        if (window.confirm(`Delete "${m.title || 'Untitled meeting'}"? (The desktop app shows a Share and Delete menu here.)`)) {
+          meetings.delete(id);
+          changeListeners.forEach((cb) => cb({ deleted: id }));
+        }
+      },
+      onChanged: (cb) => (changeListeners.add(cb), () => changeListeners.delete(cb)),
     },
+    onToast: () => () => {},
     system: {
       permissions: async () => ({ platform: 'demo', mic: 'granted', screen: 'granted' }),
       askMic: async () => true,

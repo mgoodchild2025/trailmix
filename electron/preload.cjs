@@ -19,7 +19,10 @@ contextBridge.exposeInMainWorld('trailmix', {
     create: invoke('meetings:create'),
     patch: invoke('meetings:patch'),
     remove: invoke('meetings:delete'),
+    menu: invoke('meetings:menu'),
+    onChanged: (cb) => on('meetings:changed', cb),
   },
+  onToast: (cb) => on('app:toast', cb),
   system: {
     permissions: invoke('system:permissions'),
     askMic: invoke('system:askMic'),

@@ -39,9 +39,11 @@ export default function App() {
       if (st.error) toast(st.error);
       if (st.justConnected) toast(`Signed in to CG Core${st.staff?.name ? ` as ${st.staff.name}` : ''}.`, 'ok');
     });
+    const offToast = api.onToast(({ text, kind }) => toast(text, kind));
     return () => {
       offUpdate();
       offCore();
+      offToast();
     };
   }, [refreshList, toast]);
 
@@ -51,6 +53,23 @@ export default function App() {
   }, [query, meetings]);
 
   const rec = useRecording({ toast, settings, onFinished: (id) => settings?.autoEnhance && setAutoEnhance(id), refreshList });
+
+  // A meeting deleted from the sidebar menu: stop its recording, leave its page.
+  const recRef = useRef(rec);
+  recRef.current = rec;
+  useEffect(
+    () =>
+      api.meetings.onChanged(({ deleted }) => {
+        if (!deleted) return refreshList();
+        if (recRef.current.state.meetingId === deleted) recRef.current.stop({ skipEnhance: true });
+        setSelectedId((cur) => {
+          if (cur === deleted) setView('home');
+          return cur === deleted ? null : cur;
+        });
+        refreshList();
+      }),
+    [refreshList],
+  );
 
   const select = (id) => {
     setSelectedId(id);
@@ -219,7 +238,7 @@ function useRecording({ toast, settings, onFinished, refreshList }) {
     return () => clearInterval(t);
   }, [state.state]);
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(async ({ skipEnhance = false } = {}) => {
     const cur = stateRef.current;
     if (cur.state === 'idle' || cur.state === 'stopping') return;
     setState((s) => ({ ...s, state: 'stopping' }));
@@ -231,7 +250,7 @@ function useRecording({ toast, settings, onFinished, refreshList }) {
     setInterim({ 0: '', 1: '' });
     setLevels({ mic: 0, sys: 0 });
     refreshList();
-    if (cur.meetingId) onFinished(cur.meetingId);
+    if (cur.meetingId && !skipEnhance) onFinished(cur.meetingId);
   }, [onFinished, refreshList]);
 
   useEffect(

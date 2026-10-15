@@ -18,6 +18,7 @@ const paths = {
   check: 'M5 12l5 5L20 7',
   warn: 'M12 4l9 16H3zM12 10v4M12 17v.5',
   folder: 'M3 7h6l2 2h10v10H3z',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 
 export default function Icon({ name, size = 16, className = '' }) {

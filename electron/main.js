@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu } from 'electron';
+import { marked } from 'marked';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -209,6 +210,7 @@ function registerIpc() {
   handle('meetings:delete', async (id) => {
     if (live?.meetingId === id) await stopLive();
     store.remove(id);
+    send('meetings:changed', { deleted: id });
     return true;
   });
 
@@ -374,16 +376,75 @@ function registerIpc() {
     clipboard.write({ text, html });
     return true;
   });
-  handle('export:saveMarkdown', async ({ title, markdown }) => {
-    const safe = (title || 'Meeting notes').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80);
-    const { canceled, filePath } = await dialog.showSaveDialog(win, {
-      defaultPath: path.join(app.getPath('documents'), `${safe}.md`),
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
-    if (canceled || !filePath) return false;
-    fs.writeFileSync(filePath, markdown);
-    return true;
+  handle('export:saveMarkdown', ({ title, markdown }) => saveMarkdown(title, markdown));
+
+  // Right-click (or "…") on a meeting in the sidebar.
+  handle('meetings:menu', ({ id, x, y }) => {
+    const m = store.get(id);
+    const title = m.title?.trim() || 'Untitled meeting';
+    const md = shareableNotes(m);
+    const has = !!md.trim();
+    const share = [
+      { label: 'Copy notes', enabled: has, click: () => copyNotes(md) },
+      { label: 'Email notes…', enabled: has, click: () => emailNotes(title, md) },
+      { label: 'Save as Markdown…', enabled: has, click: () => saveMarkdown(title, md) },
+    ];
+    // macOS share sheet: Mail, Messages, AirDrop, Notes…
+    if (isMac && has) share.push({ type: 'separator' }, { label: 'More', role: 'shareMenu', sharingItem: { texts: [`${title}\n\n${md}`] } });
+    Menu.buildFromTemplate([
+      { label: 'Share', submenu: share },
+      { type: 'separator' },
+      { label: 'Delete…', click: () => confirmDelete(id, title) },
+    ]).popup({ window: win, x: Math.round(x), y: Math.round(y) });
   });
+}
+
+// The notes people share: the enhanced notes if there are any, else the rough notes,
+// without the <mark> tags that show which lines came from the note-taker.
+function shareableNotes(m) {
+  return (m.enhanced || m.notes || '').replace(/<\/?mark>/g, '').trim();
+}
+
+function copyNotes(md) {
+  clipboard.write({ text: md, html: marked.parse(md) });
+  send('app:toast', { text: 'Copied. Paste into email, Teams or a ticket.', kind: 'ok' });
+}
+
+// mailto: links are length-limited (Outlook on Windows truncates around 2,000
+// characters), so long notes go on the clipboard and the email asks for a paste.
+function emailNotes(title, md) {
+  clipboard.write({ text: md, html: marked.parse(md) });
+  const fits = md.length <= 1800;
+  const body = fits ? md : 'The notes are on your clipboard: paste them here (Cmd+V or Ctrl+V).';
+  shell.openExternal(`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`);
+  if (!fits) send('app:toast', { text: 'Notes copied. Paste them into the new email.', kind: 'ok' });
+}
+
+async function saveMarkdown(title, markdown) {
+  const safe = (title || 'Meeting notes').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80);
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    defaultPath: path.join(app.getPath('documents'), `${safe}.md`),
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  });
+  if (canceled || !filePath) return false;
+  fs.writeFileSync(filePath, markdown);
+  return true;
+}
+
+async function confirmDelete(id, title) {
+  const recording = live?.meetingId === id;
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Delete', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: `Delete "${title}"?`,
+    detail: `${recording ? 'This meeting is recording; deleting it stops the recording. ' : ''}It will be moved to Trailmix's trash folder.`,
+  });
+  if (response !== 0) return;
+  if (recording) await stopLive();
+  store.remove(id);
+  send('meetings:changed', { deleted: id });
 }
 
 async function stopLive() {
