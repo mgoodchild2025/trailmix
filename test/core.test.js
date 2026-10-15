@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { CoreClient, pair, parseConnectLink, connectUrl, readNdjson } from '../electron/core.js';
+import { CoreClient, pair, parseConnectLink, connectUrl, readNdjson } from '../shared/core.js';
 
 // A tiny fake CG Core that follows docs/cg-core-api.md.
 function fakeCore(handlers) {
@@ -115,4 +115,13 @@ test('readNdjson handles a final line without a newline', async () => {
   const out = [];
   for await (const m of readNdjson(chunks())) out.push(m);
   assert.deepEqual(out, [{ a: 1 }, { b: 2 }]);
+});
+
+test('readNdjson also reads getReader() streams (React Native)', async () => {
+  const parts = ['{"t":"d","text":"a"}\n{"t":', '"done"}\n'].map((s) => new TextEncoder().encode(s));
+  let i = 0;
+  const body = { getReader: () => ({ read: async () => (i < parts.length ? { value: parts[i++], done: false } : { done: true }), releaseLock() {} }) };
+  const out = [];
+  for await (const m of readNdjson(body)) out.push(m.t);
+  assert.deepEqual(out, ['d', 'done']);
 });

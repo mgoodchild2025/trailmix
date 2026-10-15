@@ -1,6 +1,7 @@
-// Client for the CG Core Trailmix API (docs/cg-core-api.md). CG Core signs staff in with
-// Microsoft 365 and holds the Anthropic and Deepgram keys; Trailmix holds only a
-// per-device token.
+// Client for the CG Core Trailmix API (docs/cg-core-api.md), shared by the desktop and
+// mobile apps. CG Core signs staff in with Microsoft 365 and holds the Anthropic and
+// Deepgram keys; Trailmix holds only a per-device token. Pass `fetchImpl` on platforms
+// whose global fetch can't stream (React Native: expo/fetch).
 
 export const CORE_URLS = {
   production: 'https://core.cgtechnologies.com',
@@ -148,10 +149,26 @@ export class CoreClient {
   }
 }
 
+// Accepts a Node/web stream that's async-iterable or exposes getReader() (React Native).
+async function* chunksOf(body) {
+  if (body?.getReader) {
+    const reader = body.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+  } else yield* body;
+}
+
 export async function* readNdjson(body) {
   const decoder = new TextDecoder();
   let buf = '';
-  for await (const chunk of body) {
+  for await (const chunk of chunksOf(body)) {
     buf += decoder.decode(chunk, { stream: true });
     let i;
     while ((i = buf.indexOf('\n')) >= 0) {

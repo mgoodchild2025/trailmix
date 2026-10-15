@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Trailmix",
+    "slug": "trailmix",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cgtechnologies.trailmix.mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Trailmix records the meeting so it can transcribe it. Audio is never saved.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E93E3F",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "package": "com.cgtechnologies.trailmix",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "@siteed/audio-studio",
+        {
+          "enableBackgroundAudio": true,
+          "enableNotifications": true,
+          "enablePhoneStateHandling": false,
+          "enableDeviceDetection": false,
+          "iosBackgroundModes": {
+            "useAudio": true
+          },
+          "iosConfig": {
+            "microphoneUsageDescription": "Trailmix records the meeting so it can transcribe it. Audio is never saved."
+          }
+        }
+      ],
+      "./plugins/with-scene-lifecycle.js"
+    ],
+    "scheme": "trailmix",
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

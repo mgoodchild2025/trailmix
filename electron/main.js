@@ -12,7 +12,7 @@ import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, librar
 import { findTemplate } from '../shared/templates.js';
 import { setupUpdater } from './updater.js';
 import { setupSync } from './sync.js';
-import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from './core.js';
+import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from '../shared/core.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const here = import.meta.dirname;
