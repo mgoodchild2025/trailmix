@@ -30,7 +30,9 @@ if (process.env.TRAILMIX_DATA_DIR) app.setPath('userData', process.env.TRAILMIX_
 // use "paste the code" in Settings instead.
 let pendingLink = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`)) || null;
 if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
-if (!app.requestSingleInstanceLock()) app.exit(0);
+// One running copy owns trailmix:// links. Dev builds skip this so they can run beside
+// the installed app.
+if (app.isPackaged && !app.requestSingleInstanceLock()) app.exit(0);
 app.on('second-instance', (_e, argv) => {
   const link = argv.find((a) => a.startsWith(`${PROTOCOL}://`));
   if (link) handleLink(link);
