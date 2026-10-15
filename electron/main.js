@@ -1,12 +1,16 @@
 import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { Store } from './store.js';
 import { TranscriptionSession } from './deepgram.js';
 import { streamClaude } from './llm.js';
 import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext } from './prompts.js';
 import { findTemplate } from '../shared/templates.js';
 import { setupUpdater } from './updater.js';
+import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from './core.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const here = import.meta.dirname;
@@ -20,6 +24,26 @@ const aborts = new Map(); // requestId -> AbortController
 
 // Lets tests or IT point the app at a different data folder.
 if (process.env.TRAILMIX_DATA_DIR) app.setPath('userData', process.env.TRAILMIX_DATA_DIR);
+
+// ---------- trailmix:// links (CG Core sign-in) ----------
+// Only the installed app registers the scheme, so a dev copy never hijacks it; in dev,
+// use "paste the code" in Settings instead.
+let pendingLink = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`)) || null;
+if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', (_e, argv) => {
+  const link = argv.find((a) => a.startsWith(`${PROTOCOL}://`));
+  if (link) handleLink(link);
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+app.on('open-url', (e, link) => {
+  e.preventDefault();
+  if (store) handleLink(link);
+  else pendingLink = link;
+});
 
 function createWindow() {
   win = new BrowserWindow({
@@ -84,6 +108,84 @@ function setupDisplayMedia() {
   });
 }
 
+// ---------- CG Core ----------
+let pairing = null; // { state, url, timer }
+
+function coreClient() {
+  const { coreToken } = store.secrets();
+  if (!coreToken) return null;
+  return new CoreClient({ baseUrl: store.settings().coreUrl, token: coreToken });
+}
+
+function deviceName() {
+  try {
+    if (isMac) return execFileSync('scutil', ['--get', 'ComputerName'], { encoding: 'utf8' }).trim();
+  } catch {}
+  return os.hostname().replace(/\.local$/, '');
+}
+
+function coreStatus(extra = {}) {
+  send('core:status', { ...store.settings().core, pairing: !!pairing, ...extra });
+}
+
+async function refreshCore() {
+  const core = coreClient();
+  if (!core) return;
+  try {
+    store.setCore({ info: await core.me() });
+    coreStatus();
+  } catch (err) {
+    if (err.unauthorized) signOutLocal(err.message);
+    // Offline: keep the cached info and try again later.
+  }
+}
+
+function signOutLocal(message) {
+  store.setCore({ token: '', info: null });
+  coreStatus(message ? { error: message } : {});
+}
+
+async function completePairing(code, state) {
+  if (!pairing || state !== pairing.state) {
+    coreStatus({ error: 'That sign-in link is out of date. Start the sign-in again from Settings.' });
+    return;
+  }
+  const { url } = pairing;
+  clearTimeout(pairing.timer);
+  pairing = null;
+  try {
+    const res = await pair(url, { code, state, deviceName: deviceName(), platform: process.platform, appVersion: app.getVersion() });
+    store.setCore({ token: res.token, url, info: { staff: res.staff, device: res.device } });
+    await refreshCore();
+    coreStatus({ justConnected: true });
+  } catch (err) {
+    coreStatus({ error: err.message });
+  }
+  if (win) win.focus();
+}
+
+function handleLink(link) {
+  const parsed = parseConnectLink(link);
+  if (parsed) completePairing(parsed.code, parsed.state);
+}
+
+// Claude through CG Core when signed in, otherwise with the user's own key.
+async function aiStream({ purpose, system, messages, effort, maxTokens, signal, onDelta }) {
+  const s = store.settings();
+  const core = coreClient();
+  if (core && !s.ownKeys.anthropic) {
+    const cfg = s.core.config || {};
+    const model = cfg.claudeModels?.includes(s.claudeModel) ? s.claudeModel : cfg.defaultClaudeModel;
+    try {
+      return await core.streamClaude({ purpose, model, system, messages, effort, maxTokens, onDelta, signal });
+    } catch (err) {
+      if (err.unauthorized) signOutLocal(err.message);
+      throw err;
+    }
+  }
+  return streamClaude({ apiKey: store.secrets().anthropicKey, model: s.claudeModel, system, messages, effort, maxTokens, onDelta, signal });
+}
+
 // ---------- IPC ----------
 function registerIpc() {
   const handle = (ch, fn) => ipcMain.handle(ch, (_e, ...args) => fn(...args));
@@ -128,15 +230,29 @@ function registerIpc() {
   handle('transcribe:start', async ({ meetingId, sampleRate }) => {
     if (live) await stopLive();
     const { deepgramKey } = store.secrets();
-    if (!deepgramKey) throw new Error('Add your Deepgram API key in Settings to start transcribing.');
     const s = store.settings();
+    const core = coreClient();
+    if (!deepgramKey && !core) throw new Error('Sign in with CG Core (or add a Deepgram key) in Settings to start transcribing.');
     const meeting = store.get(meetingId);
     const offsetSec = meeting.transcript.reduce((m, seg) => Math.max(m, seg.end || 0), 0);
+    const viaCore = core && !deepgramKey;
+    const org = viaCore ? s.core.config || {} : {};
+    const keyterms = [...new Set([...(org.keyterms || []), ...(s.keyterms || '').split(/[,\n]/).map((k) => k.trim())].filter(Boolean))];
     const session = new TranscriptionSession({
-      apiKey: deepgramKey,
-      model: s.deepgramModel,
-      language: s.language,
-      keyterms: (s.keyterms || '').split(/[,\n]/).map((k) => k.trim()).filter(Boolean).slice(0, 50),
+      // Through CG Core, each (re)connect gets a fresh short-lived Deepgram token.
+      authorize: viaCore
+        ? async () => {
+            try {
+              return `Bearer ${(await core.deepgramToken()).accessToken}`;
+            } catch (err) {
+              if (err.unauthorized) signOutLocal(err.message);
+              throw err;
+            }
+          }
+        : async () => `Token ${deepgramKey}`,
+      model: org.deepgramModel || s.deepgramModel,
+      language: org.language || s.language,
+      keyterms: keyterms.slice(0, 50),
       sampleRate,
       offsetSec,
     });
@@ -163,15 +279,13 @@ function registerIpc() {
   // ----- AI -----
   handle('ai:enhance', async ({ requestId, meetingId, templateId }) => {
     const s = store.settings();
-    const { anthropicKey } = store.secrets();
     const meeting = store.get(meetingId);
     const template = findTemplate(templateId || meeting.templateId || s.defaultTemplateId, s.customTemplates);
     const ctrl = new AbortController();
     aborts.set(requestId, ctrl);
     try {
-      const { text } = await streamClaude({
-        apiKey: anthropicKey,
-        model: s.claudeModel,
+      const { text } = await aiStream({
+        purpose: 'enhance',
         system: ENHANCE_SYSTEM,
         messages: [{ role: 'user', content: enhanceUserMessage(meeting, template, s.myName) }],
         effort: 'medium',
@@ -190,16 +304,14 @@ function registerIpc() {
 
   handle('ai:chat', async ({ requestId, meetingId, messages }) => {
     const s = store.settings();
-    const { anthropicKey } = store.secrets();
     const context = meetingId
       ? meetingContext(store.get(meetingId), s.myName)
       : libraryContext(store.all(), s.myName);
     const ctrl = new AbortController();
     aborts.set(requestId, ctrl);
     try {
-      const { text } = await streamClaude({
-        apiKey: anthropicKey,
-        model: s.claudeModel,
+      const { text } = await aiStream({
+        purpose: 'chat',
         // Meeting material is a stable prefix, so cache it across follow-up questions.
         system: [
           { type: 'text', text: CHAT_SYSTEM },
@@ -218,6 +330,36 @@ function registerIpc() {
   });
 
   handle('ai:cancel', (requestId) => aborts.get(requestId)?.abort());
+
+  // ----- CG Core -----
+  handle('core:urls', () => CORE_URLS);
+  handle('core:connect', async ({ url } = {}) => {
+    const base = url || store.settings().coreUrl;
+    if (!Object.values(CORE_URLS).includes(base)) throw new Error('Unknown CG Core address.');
+    clearTimeout(pairing?.timer);
+    const state = crypto.randomBytes(16).toString('hex');
+    pairing = { state, url: base, timer: setTimeout(() => ((pairing = null), coreStatus()), 10 * 60 * 1000) };
+    await shell.openExternal(connectUrl(base, { state, device: deviceName(), platform: process.platform }));
+    coreStatus();
+    return true;
+  });
+  // Fallback when the browser can't open trailmix:// links (e.g. dev builds).
+  handle('core:pairCode', async (code) => {
+    if (!pairing) throw new Error('Start the sign-in first.');
+    await completePairing(code, pairing.state);
+  });
+  handle('core:cancel', () => {
+    clearTimeout(pairing?.timer);
+    pairing = null;
+    coreStatus();
+  });
+  handle('core:refresh', () => refreshCore());
+  handle('core:signout', async () => {
+    const core = coreClient();
+    if (live) await stopLive();
+    await core?.signout().catch(() => {});
+    signOutLocal();
+  });
 
   // ----- updates -----
   handle('update:status', () => updater.status());
@@ -256,6 +398,9 @@ app.whenReady().then(() => {
   updater = setupUpdater({ send, isRecording: () => !!live });
   registerIpc();
   createWindow();
+  refreshCore();
+  setInterval(refreshCore, 30 * 60 * 1000);
+  if (pendingLink) win.webContents.once('did-finish-load', () => handleLink(pendingLink));
   app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 });
 

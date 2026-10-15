@@ -33,8 +33,17 @@ export default function App() {
     api.settings.get().then(setSettings);
     refreshList();
     api.updates.status().then(setUpdate);
-    return api.updates.onStatus(setUpdate);
-  }, [refreshList]);
+    const offUpdate = api.updates.onStatus(setUpdate);
+    const offCore = api.core.onStatus((st) => {
+      api.settings.get().then(setSettings);
+      if (st.error) toast(st.error);
+      if (st.justConnected) toast(`Signed in to CG Core${st.staff?.name ? ` as ${st.staff.name}` : ''}.`, 'ok');
+    });
+    return () => {
+      offUpdate();
+      offCore();
+    };
+  }, [refreshList, toast]);
 
   useEffect(() => {
     const t = setTimeout(() => api.meetings.search(query).then(setMatches), 150);
@@ -161,18 +170,28 @@ function Home({ setupNeeded, settings, onNew, onSettings }) {
         </div>
         {setupNeeded && (
           <div className="setup card">
-            <h2>Finish setting up</h2>
-            <ul>
-              <li className={settings.hasDeepgramKey ? 'done' : ''}>
-                <Icon name={settings.hasDeepgramKey ? 'check' : 'warn'} /> Deepgram key for live transcription
-              </li>
-              <li className={settings.hasAnthropicKey ? 'done' : ''}>
-                <Icon name={settings.hasAnthropicKey ? 'check' : 'warn'} /> Anthropic key for AI notes
-              </li>
-            </ul>
-            <button className="btn primary" onClick={onSettings}>
-              Open settings
-            </button>
+            {settings.core.connected ? (
+              <>
+                <h2>Almost ready</h2>
+                <ul>
+                  <li className={settings.hasDeepgramKey ? 'done' : ''}>
+                    <Icon name={settings.hasDeepgramKey ? 'check' : 'warn'} /> Transcription {settings.hasDeepgramKey ? 'ready' : 'is not set up in CG Core yet'}
+                  </li>
+                  <li className={settings.hasAnthropicKey ? 'done' : ''}>
+                    <Icon name={settings.hasAnthropicKey ? 'check' : 'warn'} /> AI notes {settings.hasAnthropicKey ? 'ready' : 'are not set up in CG Core yet'}
+                  </li>
+                </ul>
+                <p className="muted small">Ask a CG Core admin to finish setup under Settings, Integrations.</p>
+              </>
+            ) : (
+              <>
+                <h2>Sign in to get started</h2>
+                <p className="muted small">Sign in with CG Core using your Microsoft 365 account. No API keys needed.</p>
+                <button className="btn primary" onClick={onSettings}>
+                  Sign in with CG Core
+                </button>
+              </>
+            )}
           </div>
         )}
         <p className="muted small tip">Tip: wear headphones for the cleanest transcript. Without them, Trailmix filters out echo of other speakers picked up by your mic.</p>
