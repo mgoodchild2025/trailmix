@@ -1,0 +1,4 @@
+{
+  "reviewNotes": "Trailmix is an internal meeting-notes tool for CG Technologies staff. Signing in requires a CG Technologies Microsoft 365 account, so please use the demo: on the first screen tap \"Try the demo\". It shows sample meetings and simulates recording, live transcription and AI notes on the device; nothing is saved or sent. In the demo, open a meeting, tap Record (or Continue recording), then Stop to see the AI notes being written. Settings > Exit demo returns to the sign-in screen.",
+  "demoAccountRequired": false
+}
