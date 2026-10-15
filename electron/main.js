@@ -8,9 +8,10 @@ import { execFileSync } from 'node:child_process';
 import { Store } from './store.js';
 import { TranscriptionSession } from './deepgram.js';
 import { streamClaude } from './llm.js';
-import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext } from './prompts.js';
+import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext } from '../shared/prompts.js';
 import { findTemplate } from '../shared/templates.js';
 import { setupUpdater } from './updater.js';
+import { setupSync } from './sync.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from './core.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -21,6 +22,7 @@ let win;
 let store;
 let live = null; // { meetingId, session }
 let updater;
+let sync;
 const aborts = new Map(); // requestId -> AbortController
 
 // Lets tests or IT point the app at a different data folder.
@@ -137,6 +139,7 @@ async function refreshCore() {
   try {
     store.setCore({ info: await core.me() });
     coreStatus();
+    sync?.now();
   } catch (err) {
     if (err.unauthorized) signOutLocal(err.message);
     // Offline: keep the cached info and try again later.
@@ -201,15 +204,19 @@ function registerIpc() {
   handle('meetings:get', (id) => store.get(id));
   handle('meetings:create', (fields) => {
     const s = store.settings();
-    return store.create({ templateId: s.defaultTemplateId, ...fields });
+    const m = store.create({ templateId: s.defaultTemplateId, ...fields });
+    sync.changed(m.id);
+    return m;
   });
   handle('meetings:patch', (id, fields) => {
     store.patch(id, fields);
+    sync.changed(id);
     return true;
   });
   handle('meetings:delete', async (id) => {
     if (live?.meetingId === id) await stopLive();
     store.remove(id);
+    sync.deleted(id);
     send('meetings:changed', { deleted: id });
     return true;
   });
@@ -266,6 +273,7 @@ function registerIpc() {
       if (t.isFinal && t.text.trim()) {
         const seg = { id: `${Date.now().toString(36)}-${n++}`, channel: t.channel, speaker: t.speaker, text: t.text.trim(), start: t.start, end: t.end };
         store.appendSegment(meetingId, seg);
+        sync.changed(meetingId);
         send('transcribe:event', { type: 'final', meetingId, segment: seg });
       } else if (!t.isFinal) {
         send('transcribe:event', { type: 'interim', meetingId, channel: t.channel, text: t.text });
@@ -301,6 +309,7 @@ function registerIpc() {
       const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim();
       if (title && !meeting.title.trim()) fields.title = title;
       store.patch(meetingId, fields);
+      sync.changed(meetingId);
       return fields;
     } finally {
       aborts.delete(requestId);
@@ -365,6 +374,10 @@ function registerIpc() {
     await core?.signout().catch(() => {});
     signOutLocal();
   });
+
+  // ----- sync -----
+  handle('sync:status', () => sync.status());
+  handle('sync:now', () => sync.now());
 
   // ----- updates -----
   handle('update:status', () => updater.status());
@@ -444,6 +457,7 @@ async function confirmDelete(id, title) {
   if (response !== 0) return;
   if (recording) await stopLive();
   store.remove(id);
+  sync.deleted(id);
   send('meetings:changed', { deleted: id });
 }
 
@@ -460,6 +474,25 @@ app.whenReady().then(() => {
   store = new Store(app.getPath('userData'), safeStorage);
   setupDisplayMedia();
   updater = setupUpdater({ send, isRecording: () => !!live });
+  sync = setupSync({
+    store,
+    coreClient,
+    isRecording: () => !!live,
+    onStatus: (st) => send('sync:status', st),
+    onUnauthorized: (msg) => signOutLocal(msg),
+    // Changes pulled from other devices: refresh what's on screen.
+    onMeetingsChanged: (ids) => {
+      for (const id of ids) {
+        let exists = true;
+        try {
+          store.get(id);
+        } catch {
+          exists = false;
+        }
+        send('meetings:changed', exists ? { updated: id } : { deleted: id });
+      }
+    },
+  });
   registerIpc();
   createWindow();
   refreshCore();

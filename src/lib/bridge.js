@@ -28,7 +28,7 @@ function createDemoBridge() {
       url: 'https://core.cgtechnologies.com',
       staff: { name: 'Matt Goodchild', email: 'matt@example.com' },
       device: { name: "Matt's MacBook Air" },
-      features: { claude: true, deepgram: true },
+      features: { claude: true, deepgram: true, sync: true },
       config: { claudeModels: ['claude-opus-5-5', 'claude-sonnet-5-5'], defaultClaudeModel: 'claude-opus-5-5' },
     },
   };
@@ -209,6 +209,11 @@ function createDemoBridge() {
         coreListeners.forEach((cb) => cb(settings.core));
       },
       onStatus: (cb) => (coreListeners.add(cb), () => coreListeners.delete(cb)),
+    },
+    sync: {
+      status: async () => ({ enabled: true, lastSyncAt: Date.now() - 120000, pending: 0 }),
+      now: async () => {},
+      onStatus: () => () => {},
     },
     updates: {
       status: async () => ({ state: 'dev', version: '0.1.0' }),

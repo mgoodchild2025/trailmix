@@ -1,4 +1,4 @@
-import { transcriptToText, formatTime, durationOf } from '../shared/transcript.js';
+import { transcriptToText, formatTime, durationOf, isMono } from './transcript.js';
 
 const ORG = 'CG Technologies, an IT managed service provider';
 
@@ -26,7 +26,11 @@ export function enhanceUserMessage(meeting, template, myName) {
 Title so far: ${meeting.title || '(untitled)'}
 Date: ${date.toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' })}
 Length: ${formatTime(durationOf(meeting.transcript || []))}
-Note-taker: ${myName || 'Me'}
+Note-taker: ${myName || 'Me'}${
+    isMono(meeting.transcript)
+      ? '\nRecorded on one phone microphone: speakers are numbered by the transcription and one of them is the note-taker. Use names from the notes or the conversation where it is clear who is speaking.'
+      : ''
+  }
 </meeting>
 
 <template name="${template.name}">
