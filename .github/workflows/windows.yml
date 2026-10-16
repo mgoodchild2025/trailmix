@@ -10,10 +10,13 @@ on:
 
 permissions:
   contents: write
+  id-token: write # lets azure/login sign in with OIDC
 
 jobs:
   build:
     runs-on: windows-latest
+    # The Azure federated credential trusts this environment, not a branch or tag.
+    environment: release
     steps:
       - uses: actions/checkout@v5
 
@@ -34,24 +37,54 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $v"; exit 1
           fi
 
-      # Optional code signing: add WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD
-      # as repository secrets. Without them the installer is built unsigned.
-      - name: Configure signing
-        shell: bash
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-        run: |
-          if [ -z "$WIN_CSC_LINK" ]; then
-            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
-            echo "::notice::No WIN_CSC_LINK secret; building an unsigned installer."
-          fi
+      # Code signing with Azure Artifact Signing (formerly Trusted Signing). GitHub signs in
+      # to Azure with a federated credential (OIDC) on the "release" environment, so no
+      # secret is stored here. Set these repository variables to turn it on:
+      #   AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_SUBSCRIPTION_ID   the app registration
+      #   AZURE_SIGNING_ENDPOINT       e.g. https://eus.codesigning.azure.net/
+      #   AZURE_SIGNING_ACCOUNT        the Artifact Signing account name
+      #   AZURE_SIGNING_PROFILE        the certificate profile name
+      #   AZURE_SIGNING_PUBLISHER      the certificate's subject CN; installed apps only
+      #                                accept updates signed with this name
+      # Without them the installer is built unsigned.
+      - name: Sign in to Azure
+        if: vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Build installer
         shell: bash
         env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npm run build && npx electron-builder --win --x64 --publish never
+          SIGN: ${{ vars.AZURE_CLIENT_ID != '' }}
+          ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
+        run: |
+          npm run build
+          if [ "$SIGN" = "true" ]; then
+            npx electron-builder --win --x64 --publish never \
+              -c.win.azureSignOptions.endpoint="$ENDPOINT" \
+              -c.win.azureSignOptions.codeSigningAccountName="$ACCOUNT" \
+              -c.win.azureSignOptions.certificateProfileName="$PROFILE" \
+              -c.win.azureSignOptions.publisherName="$PUBLISHER"
+          else
+            echo "::notice::Azure signing variables not set; building an unsigned installer."
+            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --win --x64 --publish never
+          fi
+
+      - name: Check the signature
+        if: vars.AZURE_CLIENT_ID != ''
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem release\*.exe, release\win-unpacked\Trailmix.exe) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            if ($sig.Status -ne 'Valid') { Write-Error "$($f.Name): signature $($sig.Status)"; exit 1 }
+            Write-Host "$($f.Name): signed by $($sig.SignerCertificate.Subject)"
+          }
 
       # electron-builder's own publishing uploads files in parallel and can create two
       # drafts for one tag, so create (or reuse) the draft once and upload in sequence.
