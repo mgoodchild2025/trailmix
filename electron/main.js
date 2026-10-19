@@ -14,6 +14,8 @@ import { setupUpdater } from './updater.js';
 import { setupSync } from './sync.js';
 import { MeetingDetector } from './meeting-detect.js';
 import { watchMicrophone } from './micwatch.js';
+import { Overlay } from './overlay.js';
+import { createTray, isActive } from './tray.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from '../shared/core.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -25,6 +27,13 @@ let store;
 let live = null; // { meetingId, session }
 let updater;
 let sync;
+let tray = null;
+let overlay = null;
+let rec = { state: 'idle' }; // recording state reported by the window: { state, meetingId, title, accumMs, resumedAt }
+let prompt = null; // overlay prompt from meeting detection: { mode: 'prompt' | 'ended', key, label }
+let promptTimer = null;
+let quitting = false; // set once the app is really quitting (closing the window only hides it)
+let quitConfirmed = false;
 const aborts = new Map(); // requestId -> AbortController
 
 // Lets tests or IT point the app at a different data folder.
@@ -41,10 +50,8 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) app.exit(0);
 app.on('second-instance', (_e, argv) => {
   const link = argv.find((a) => a.startsWith(`${PROTOCOL}://`));
   if (link) handleLink(link);
-  if (win) {
-    if (win.isMinimized()) win.restore();
-    win.focus();
-  }
+  // Opening Trailmix again (Start menu, Dock, Finder) while it's in the tray shows it.
+  if (store) showWindow();
 });
 app.on('open-url', (e, link) => {
   e.preventDefault();
@@ -62,16 +69,34 @@ function createWindow() {
     backgroundColor: '#ffffff',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
+    show: false,
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // Recording runs in this window, so it must keep full speed while hidden in the tray.
+      backgroundThrottling: false,
     },
   });
 
-  if (DEV_URL) win.loadURL(DEV_URL);
-  else win.loadFile(path.join(here, '..', 'dist', 'index.html'));
+  loadPage(win);
+  // Opened at login: start in the tray, ready for the next meeting.
+  win.once('ready-to-show', () => !startHidden && win.show());
+  win.webContents.once('did-finish-load', () => {
+    windowReady = true;
+    for (const c of queuedCommands.splice(0)) send('app:command', c);
+  });
+
+  // Closing the window keeps Trailmix running in the menu bar / tray (and keeps any
+  // recording going); Quit is in the tray menu, the app menu and Cmd+Q.
+  win.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    win.hide();
+    trayHint();
+  });
+  for (const ev of ['show', 'hide', 'focus', 'blur', 'minimize', 'restore']) win.on(ev, refreshOverlay);
 
   // Links in notes open in the user's browser; the app window never navigates away.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -90,6 +115,20 @@ function createWindow() {
 const send = (channel, payload) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 };
+
+function loadPage(w, hash) {
+  if (DEV_URL) w.loadURL(hash ? `${DEV_URL}#${hash}` : DEV_URL);
+  else w.loadFile(path.join(here, '..', 'dist', 'index.html'), hash ? { hash } : undefined);
+}
+
+// Commands for the main window (start/stop recording, open a meeting…). Queued if the
+// window is still loading, e.g. right after launch at login.
+let windowReady = false;
+const queuedCommands = [];
+function command(c) {
+  if (windowReady) send('app:command', c);
+  else queuedCommands.push(c);
+}
 
 // ---------- system audio ----------
 // getDisplayMedia() in the renderer lands here. Granting `audio: 'loopback'` gives us the
@@ -198,11 +237,27 @@ async function aiStream({ purpose, system, messages, effort, maxTokens, signal, 
 function registerIpc() {
   const handle = (ch, fn) => ipcMain.handle(ch, (_e, ...args) => fn(...args));
 
-  handle('settings:get', () => store.settings());
+  const withApp = (s) => ({ ...s, canOpenAtLogin: canOpenAtLogin() });
+  handle('settings:get', () => withApp(store.settings()));
   handle('settings:set', (patch) => {
     const out = store.saveSettings(patch);
     if ('detectMeetings' in patch || 'detectAnyApp' in patch) setupMeetingDetection();
-    return out;
+    if ('openAtLogin' in patch) applyLoginItem();
+    if ('showRecordingIndicator' in patch) refreshOverlay();
+    return withApp(out);
+  });
+
+  // ----- recording state, tray and overlay -----
+  ipcMain.on('rec:state', (e, next) => {
+    if (e.sender !== win?.webContents) return;
+    rec = next || { state: 'idle' };
+    tray?.setRecording(rec);
+    refreshOverlay();
+  });
+  ipcMain.handle('overlay:get', () => overlay?.view || null);
+  ipcMain.on('overlay:act', (e, action) => {
+    if (e.sender !== overlay?.webContents) return;
+    overlayAction(action);
   });
 
   handle('meetings:list', () => store.list());
@@ -474,9 +529,9 @@ let detector = null;
 let stopWatching = null;
 const shownNotes = new Set(); // keep references so notifications aren't garbage-collected
 
-function notify({ title, body, action, onAccept }) {
+function notify({ title, body, action, onAccept = () => showWindow() }) {
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title, body, silent: false, actions: isMac ? [{ type: 'button', text: action }] : [], closeButtonText: 'Not now' });
+  const n = new Notification({ title, body, silent: !action, actions: isMac && action ? [{ type: 'button', text: action }] : [], closeButtonText: 'Not now' });
   const accept = () => {
     shownNotes.delete(n);
     onAccept();
@@ -493,6 +548,101 @@ function showWindow() {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+  if (isMac) app.focus({ steal: true });
+}
+
+// ---------- tray, overlay, login item ----------
+const PROMPT_MS = 60_000; // an unanswered prompt goes away after a minute
+
+function showPrompt(p) {
+  clearTimeout(promptTimer);
+  prompt = p;
+  promptTimer = setTimeout(() => {
+    prompt = null;
+    refreshOverlay();
+  }, PROMPT_MS);
+  refreshOverlay();
+}
+
+function clearPrompt() {
+  clearTimeout(promptTimer);
+  prompt = null;
+}
+
+// What the floating window shows: a pending prompt first; otherwise, while recording,
+// the indicator, but only when the Trailmix window isn't the one in front.
+function refreshOverlay() {
+  if (!overlay) return;
+  if (prompt) return overlay.set({ ...prompt, rec });
+  const front = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  const want = isActive(rec) && rec.state !== 'stopping' && store.settings().showRecordingIndicator !== false && !front;
+  overlay.set(want ? { mode: 'recording', rec } : null);
+}
+
+function overlayAction({ type }) {
+  switch (type) {
+    case 'start': // from the prompt
+      if (prompt?.key) detector?.follow(prompt.key, prompt.label);
+      clearPrompt();
+      showWindow();
+      command({ cmd: 'start' });
+      break;
+    case 'stop': // from the "call ended" prompt or the indicator
+      clearPrompt();
+      command({ cmd: 'stop' });
+      break;
+    case 'dismiss':
+      clearPrompt();
+      break;
+    case 'pause':
+    case 'resume':
+      command({ cmd: type });
+      break;
+    case 'open':
+      showWindow();
+      command({ cmd: 'open', meetingId: rec.meetingId });
+      break;
+  }
+  refreshOverlay();
+}
+
+function trayCommand(cmd) {
+  if (cmd === 'install-update') return updater.install();
+  if (['start', 'new', 'open', 'settings'].includes(cmd)) showWindow();
+  command({ cmd, meetingId: rec.meetingId });
+}
+
+// The dev copy is Electron.app; registering it as a login item would open bare Electron.
+const canOpenAtLogin = () => app.isPackaged && (isMac || process.platform === 'win32');
+
+function applyLoginItem() {
+  if (!canOpenAtLogin()) return;
+  const openAtLogin = store.settings().openAtLogin !== false;
+  app.setLoginItemSettings(isMac ? { openAtLogin } : { openAtLogin, args: ['--hidden'] });
+}
+
+let startHidden = false; // opened at login: stay in the tray (worked out once the app is ready)
+
+// Windows users may not expect the close button to leave the app running: say so, once.
+function trayHint() {
+  if (isMac || store.settings().trayHintShown) return;
+  store.saveSettings({ trayHintShown: true });
+  notify({ title: 'Trailmix is still running', body: "It's in the system tray, ready for your next meeting. Quit from the tray icon." });
+}
+
+async function confirmQuitWhileRecording() {
+  const { response } = await dialog.showMessageBox(win && !win.isDestroyed() && win.isVisible() ? win : undefined, {
+    type: 'warning',
+    buttons: ['Stop and quit', 'Keep recording'],
+    defaultId: 1,
+    cancelId: 1,
+    message: 'Trailmix is recording',
+    detail: 'Quitting stops the recording. The transcript so far is saved; you can write the notes from it later.',
+  });
+  if (response !== 0) return;
+  quitConfirmed = true;
+  await stopLive();
+  app.quit();
 }
 
 function setupMeetingDetection() {
@@ -504,27 +654,8 @@ function setupMeetingDetection() {
     platform: process.platform,
     anyApp: !!s.detectAnyApp,
     isRecording: () => !!live,
-    onPrompt: ({ key, label }) =>
-      notify({
-        title: `${label} is using your microphone`,
-        body: 'Take notes on this meeting with Trailmix?',
-        action: 'Start recording',
-        onAccept: () => {
-          showWindow();
-          detector?.follow(key, label);
-          send('detect:start', { label });
-        },
-      }),
-    onEnded: ({ label }) =>
-      notify({
-        title: `${label} call ended?`,
-        body: 'Stop recording and write your notes.',
-        action: 'Stop recording',
-        onAccept: () => {
-          showWindow();
-          send('detect:stop', {});
-        },
-      }),
+    onPrompt: ({ key, label }) => showPrompt({ mode: 'prompt', key, label }),
+    onEnded: ({ key, label }) => showPrompt({ mode: 'ended', key, label }),
   });
   stopWatching = watchMicrophone((apps) => detector?.update(apps), (msg) => console.warn(msg));
 }
@@ -545,7 +676,14 @@ if (process.platform === 'win32') app.setAppUserModelId('com.cgtechnologies.trai
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'), safeStorage);
   setupDisplayMedia();
-  updater = setupUpdater({ send, isRecording: () => !!live });
+  updater = setupUpdater({
+    send: (ch, st) => {
+      send(ch, st);
+      tray?.setUpdate(st);
+    },
+    isRecording: () => !!live,
+    beforeInstall: () => (quitting = true),
+  });
   sync = setupSync({
     store,
     coreClient,
@@ -566,18 +704,45 @@ app.whenReady().then(() => {
     },
   });
   registerIpc();
+  startHidden = process.argv.includes('--hidden') || (isMac && app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin);
+  applyLoginItem();
   createWindow();
+  overlay = new Overlay({ preload: path.join(here, 'preload.cjs'), load: loadPage, isMac });
+  tray = createTray({
+    isMac,
+    assetsDir: path.join(here, 'assets', 'tray'),
+    onCommand: trayCommand,
+    onOpen: showWindow,
+  });
+  tray.setUpdate(updater.status());
   refreshCore();
   setInterval(refreshCore, 30 * 60 * 1000);
   setupMeetingDetection();
   if (pendingLink) win.webContents.once('did-finish-load', () => handleLink(pendingLink));
-  app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
+  // Dock icon clicked (macOS): bring the window back. (Not for the activation that comes
+  // with launching, or a login-item start would open the window anyway.)
+  const launchedAt = Date.now();
+  app.on('activate', () => {
+    if (startHidden && Date.now() - launchedAt < 3000) return;
+    showWindow();
+  });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  if (live && !quitConfirmed) {
+    e.preventDefault();
+    confirmQuitWhileRecording();
+    return;
+  }
+  quitting = true;
   stopWatching?.();
   store?.flushAll();
 });
+app.on('will-quit', () => {
+  tray?.destroy();
+  overlay?.destroy();
+});
+// Only reached while quitting (closing the window hides it).
 app.on('window-all-closed', async () => {
   await stopLive();
   store?.flushAll();

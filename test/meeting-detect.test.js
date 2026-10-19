@@ -55,12 +55,12 @@ function run(opts = {}) {
 }
 const zoom = [{ bundleId: 'us.zoom.xos', pid: 1 }];
 
-test('asks once a meeting app has held the mic for a few seconds, and only once per call', () => {
+test('asks once a meeting app has held the mic for a couple of seconds, and only once per call', () => {
   const { d, events } = run();
   d.update(zoom, 0);
-  d.update(zoom, 3000);
+  d.update(zoom, 2000);
   assert.deepEqual(events, []); // a blip isn't a call
-  d.update(zoom, 5000);
+  d.update(zoom, 2500);
   d.update(zoom, 60000);
   assert.deepEqual(events, [['prompt', 'Zoom']]);
   d.update([], 61000); // call over

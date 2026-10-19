@@ -79,7 +79,7 @@ export function parseWindowsConsentStore(text) {
  * Options: { platform, anyApp, settleMs, endMs, isRecording() }
  */
 export class MeetingDetector {
-  constructor({ platform, anyApp = false, settleMs = 5000, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {} }) {
+  constructor({ platform, anyApp = false, settleMs = 2500, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {} }) {
     Object.assign(this, { platform, anyApp, settleMs, endMs, isRecording, onPrompt, onEnded });
     this.seen = new Map(); // key -> { label, since, prompted }
     this.following = null; // { key, label, goneSince } for a recording we started from a prompt

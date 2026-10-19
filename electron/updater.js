@@ -7,7 +7,7 @@ import updaterPkg from 'electron-updater';
 const { autoUpdater } = updaterPkg;
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
 
-export function setupUpdater({ send, isRecording }) {
+export function setupUpdater({ send, isRecording, beforeInstall = () => {} }) {
   let status = { state: app.isPackaged ? 'idle' : 'dev', version: app.getVersion() };
   const set = (patch) => {
     status = { ...status, ...patch };
@@ -39,6 +39,8 @@ export function setupUpdater({ send, isRecording }) {
     install: () => {
       if (status.state !== 'ready') return false;
       if (isRecording()) throw new Error('Stop recording before restarting to update.');
+      // Closing the window normally just hides it; let the updater's quit through.
+      beforeInstall();
       setImmediate(() => autoUpdater.quitAndInstall());
       return true;
     },

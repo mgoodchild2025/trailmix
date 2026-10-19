@@ -64,7 +64,7 @@ function watchWindows(onApps, log) {
       if (stopped) return;
       if (err) log(`meeting detection: reg query failed (${err.message})`);
       else onApps(parseWindowsConsentStore(stdout));
-      timer = setTimeout(poll, 3000);
+      timer = setTimeout(poll, 1500);
     });
   };
   poll();

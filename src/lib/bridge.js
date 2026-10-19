@@ -6,6 +6,12 @@ import { BUILT_IN_TEMPLATES } from '../../shared/templates.js';
 export const api = window.trailmix || createDemoBridge();
 export const isDemo = !window.trailmix;
 
+// `npm run web` with #overlay=prompt|ended|recording previews the floating window.
+function demoOverlay() {
+  const mode = new URLSearchParams(location.hash.slice(1)).get('overlay') || 'prompt';
+  return { mode, label: 'Teams', rec: { state: 'live', title: 'Northfield Dental — quarterly review', accumMs: 754000, resumedAt: Date.now() } };
+}
+
 function createDemoBridge() {
   const listeners = { transcribe: new Set(), ai: new Set() };
   const emit = (set, p) => set.forEach((cb) => cb(p));
@@ -136,7 +142,9 @@ function createDemoBridge() {
       onChanged: (cb) => (changeListeners.add(cb), () => changeListeners.delete(cb)),
     },
     onToast: () => () => {},
-    detect: { onStart: () => () => {}, onStop: () => () => {} },
+    commands: { on: () => () => {} },
+    rec: { report: () => {} },
+    overlay: { get: async () => demoOverlay(), onState: () => () => {}, act: () => {} },
     system: {
       permissions: async () => ({ platform: 'demo', mic: 'granted', screen: 'granted' }),
       askMic: async () => true,

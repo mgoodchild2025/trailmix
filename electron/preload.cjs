@@ -23,9 +23,13 @@ contextBridge.exposeInMainWorld('trailmix', {
     onChanged: (cb) => on('meetings:changed', cb),
   },
   onToast: (cb) => on('app:toast', cb),
-  detect: {
-    onStart: (cb) => on('detect:start', cb),
-    onStop: (cb) => on('detect:stop', cb),
+  // Commands from the tray menu and the floating prompt/indicator: { cmd, meetingId }.
+  commands: { on: (cb) => on('app:command', cb) },
+  rec: { report: (state) => ipcRenderer.send('rec:state', state) },
+  overlay: {
+    get: invoke('overlay:get'),
+    onState: (cb) => on('overlay:state', cb),
+    act: (action) => ipcRenderer.send('overlay:act', action),
   },
   system: {
     permissions: invoke('system:permissions'),

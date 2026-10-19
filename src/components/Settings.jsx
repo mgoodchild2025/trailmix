@@ -147,6 +147,22 @@ export default function Settings({ settings, onChange, toast, update }) {
         </section>
 
         <section className="card">
+          <h2>Menu bar and startup</h2>
+          <p className="muted small">
+            Trailmix lives in the {api.platform === 'win32' ? 'system tray' : 'menu bar'}, so it's ready when a meeting starts. Closing the window keeps it running there;
+            quit from the {api.platform === 'win32' ? 'tray' : 'menu bar'} icon.
+          </p>
+          <label className="check">
+            <input type="checkbox" checked={draft.openAtLogin !== false} disabled={!settings.canOpenAtLogin} onChange={(e) => save({ openAtLogin: e.target.checked })} />
+            Open Trailmix when I log in{!settings.canOpenAtLogin && <span className="muted small"> (in the installed app)</span>}
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={draft.showRecordingIndicator !== false} onChange={(e) => save({ showRecordingIndicator: e.target.checked })} />
+            Show a small recording timer while I'm in another app
+          </label>
+        </section>
+
+        <section className="card">
           <h2>Meeting detection</h2>
           <p className="muted small">
             When Teams, Zoom, Webex, Slack, Google Meet or another call app starts using your microphone, Trailmix asks whether to take notes. It never starts
