@@ -64,6 +64,7 @@ test('asks once a meeting app has held the mic for a couple of seconds, and only
   d.update(zoom, 60000);
   assert.deepEqual(events, [['prompt', 'Zoom']]);
   d.update([], 61000); // call over
+  d.update([], 65000);
   d.update(zoom, 120000);
   d.update(zoom, 126000); // next call asks again
   assert.deepEqual(events, [['prompt', 'Zoom'], ['prompt', 'Zoom']]);
@@ -96,4 +97,26 @@ test('offers to stop when the followed call app lets go of the mic for a while',
   assert.deepEqual(events, [['prompt', 'Zoom']]);
   d.update([], 28000);
   assert.deepEqual(events, [['prompt', 'Zoom'], ['ended', 'Zoom']]);
+});
+
+test('a call app that briefly drops the mic still gets asked', () => {
+  const chrome = [{ bundleId: 'com.google.Chrome.helper', pid: 2 }];
+  const { d, events } = run();
+  d.update(chrome, 0);
+  d.update([], 1000); // browsers reopen the mic during a call
+  d.update(chrome, 2000);
+  d.update(chrome, 2500);
+  assert.deepEqual(events, [['prompt', 'Chrome (a web meeting)']]);
+});
+
+test('a long gap starts the count again', () => {
+  const { d, events } = run();
+  d.update(zoom, 0);
+  d.update([], 1000);
+  d.update([], 5000); // gone for longer than the grace period
+  d.update(zoom, 6000);
+  d.update(zoom, 8000);
+  assert.deepEqual(events, []);
+  d.update(zoom, 8500);
+  assert.deepEqual(events, [['prompt', 'Zoom']]);
 });

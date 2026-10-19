@@ -555,6 +555,7 @@ function showWindow() {
 const PROMPT_MS = 60_000; // an unanswered prompt goes away after a minute
 
 function showPrompt(p) {
+  if (!app.isPackaged) console.log(`[detect] ${p.mode}: ${p.label}`);
   clearTimeout(promptTimer);
   prompt = p;
   promptTimer = setTimeout(() => {
@@ -608,6 +609,7 @@ function overlayAction({ type }) {
 
 function trayCommand(cmd) {
   if (cmd === 'install-update') return updater.install();
+  if (cmd === 'test-prompt') return showPrompt({ mode: 'prompt', key: 'Teams', label: 'Teams' });
   if (['start', 'new', 'open', 'settings'].includes(cmd)) showWindow();
   command({ cmd, meetingId: rec.meetingId });
 }
@@ -657,7 +659,25 @@ function setupMeetingDetection() {
     onPrompt: ({ key, label }) => showPrompt({ mode: 'prompt', key, label }),
     onEnded: ({ key, label }) => showPrompt({ mode: 'ended', key, label }),
   });
-  stopWatching = watchMicrophone((apps) => detector?.update(apps), (msg) => console.warn(msg));
+  let last = '';
+  let current = [];
+  const stopMic = watchMicrophone(
+    (apps) => {
+      // Dev builds log what the OS reports, to make detection easy to check.
+      const seen = apps.map((a) => a.bundleId || a.exe).join(', ');
+      if (!app.isPackaged && seen !== last) console.log(`[detect] using the mic: ${seen || 'nothing'}`);
+      last = seen;
+      current = apps;
+      detector?.update(apps);
+    },
+    (msg) => console.warn(msg),
+  );
+  // The macOS watcher only reports changes, so re-check every second for the timers.
+  const ticker = setInterval(() => detector?.update(current), 1000);
+  stopWatching = () => {
+    clearInterval(ticker);
+    stopMic();
+  };
 }
 
 async function stopLive() {
@@ -713,6 +733,7 @@ app.whenReady().then(() => {
     assetsDir: path.join(here, 'assets', 'tray'),
     onCommand: trayCommand,
     onOpen: showWindow,
+    dev: !app.isPackaged,
   });
   tray.setUpdate(updater.status());
   refreshCore();

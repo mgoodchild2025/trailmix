@@ -14,7 +14,7 @@ const fmt = (ms) => {
 export const elapsedMs = (rec) => (rec.state === 'live' ? rec.accumMs + (Date.now() - rec.resumedAt) : rec.accumMs || 0);
 export const isActive = (rec) => ['starting', 'live', 'paused', 'stopping'].includes(rec?.state);
 
-export function createTray({ isMac, assetsDir, onCommand, onOpen }) {
+export function createTray({ isMac, assetsDir, onCommand, onOpen, dev = false }) {
   const img = (name) => {
     const i = nativeImage.createFromPath(path.join(assetsDir, `${name}.png`));
     if (isMac && name.endsWith('Template')) i.setTemplateImage(true);
@@ -57,6 +57,7 @@ export function createTray({ isMac, assetsDir, onCommand, onOpen }) {
       { type: 'separator' },
       { label: 'Open Trailmix', click: () => onOpen() },
       { label: 'Settings…', click: cmd('settings') },
+      ...(dev ? [{ type: 'separator' }, { label: 'Test meeting pop-up (dev)', click: cmd('test-prompt') }] : []),
       ...(update?.state === 'ready' && !recording ? [{ type: 'separator' }, { label: `Restart to update to ${update.next}`, click: cmd('install-update') }] : []),
       { type: 'separator' },
       { label: 'Quit Trailmix', role: 'quit' },
