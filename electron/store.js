@@ -20,6 +20,9 @@ export const DEFAULT_SETTINGS = {
   coreUrl: CORE_DEFAULT_URL,
   detectMeetings: true, // offer to take notes when a meeting app uses the microphone
   detectAnyApp: false, // ...or any app at all
+  openAtLogin: true, // start in the menu bar / tray when the user logs in (installed app only)
+  showRecordingIndicator: true, // floating timer + stop button while recording in another app
+  trayHintShown: false, // Windows: told the user that closing the window keeps Trailmix in the tray
   coreInfo: null, // last /me response from CG Core: staff, device, features, config
 };
 

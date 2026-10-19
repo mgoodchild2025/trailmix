@@ -83,20 +83,32 @@ export default function App() {
     if (record) rec.start(m.id);
   };
 
-  // A meeting app started using the mic and the user said "Start recording" in the
-  // notification (or "Stop recording" when the call ended).
+  // Commands from the tray menu and the floating prompt / recording indicator.
   const newMeetingRef = useRef(newMeeting);
   newMeetingRef.current = newMeeting;
+  useEffect(
+    () =>
+      api.commands.on(({ cmd, meetingId }) => {
+        const r = recRef.current;
+        if (cmd === 'start') {
+          if (r.state.state === 'idle') newMeetingRef.current({ record: true });
+          else select(r.state.meetingId);
+        } else if (cmd === 'new') newMeetingRef.current();
+        else if (cmd === 'stop') r.stop();
+        else if (cmd === 'pause') r.pause();
+        else if (cmd === 'resume') r.resume();
+        else if (cmd === 'open' && (meetingId || r.state.meetingId)) select(meetingId || r.state.meetingId);
+        else if (cmd === 'settings') setView('settings');
+      }),
+    [],
+  );
+
+  // Tell the tray and the recording indicator what's happening.
+  const recTitle = meetings.find((m) => m.id === rec.state.meetingId)?.title || '';
   useEffect(() => {
-    const offStart = api.detect.onStart(() => {
-      if (recRef.current.state.state === 'idle') newMeetingRef.current({ record: true });
-    });
-    const offStop = api.detect.onStop(() => recRef.current.stop());
-    return () => {
-      offStart();
-      offStop();
-    };
-  }, []);
+    const { state, meetingId, accumMs = 0, resumedAt = null } = rec.state;
+    api.rec.report({ state, meetingId, accumMs, resumedAt, title: recTitle });
+  }, [rec.state, recTitle]);
 
   if (!settings) return <div className="app loading" />;
 

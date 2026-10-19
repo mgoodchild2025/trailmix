@@ -76,12 +76,14 @@ export function parseWindowsConsentStore(text) {
  * Feed it snapshots (`update(apps, now)`); it calls back:
  *   onPrompt({ key, label })     a meeting app has held the mic for `settleMs` → offer notes
  *   onEnded({ key, label })      the app a detection-started recording came from let go
- * Options: { platform, anyApp, settleMs, endMs, isRecording() }
+ * Options: { platform, anyApp, settleMs, graceMs, endMs, isRecording() }
+ * Call update() regularly (not only when the app list changes): the timers only advance
+ * when it runs.
  */
 export class MeetingDetector {
-  constructor({ platform, anyApp = false, settleMs = 5000, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {} }) {
-    Object.assign(this, { platform, anyApp, settleMs, endMs, isRecording, onPrompt, onEnded });
-    this.seen = new Map(); // key -> { label, since, prompted }
+  constructor({ platform, anyApp = false, settleMs = 2500, graceMs = 3000, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {} }) {
+    Object.assign(this, { platform, anyApp, settleMs, graceMs, endMs, isRecording, onPrompt, onEnded });
+    this.seen = new Map(); // key -> { label, since, prompted, goneAt }
     this.following = null; // { key, label, goneSince } for a recording we started from a prompt
   }
 
@@ -91,10 +93,16 @@ export class MeetingDetector {
       const c = classify(a, this.platform);
       if (c && (c.known || this.anyApp)) present.set(c.key, c);
     }
-    // Apps that let go of the mic are forgotten, so the next call prompts again.
-    for (const key of [...this.seen.keys()]) if (!present.has(key)) this.seen.delete(key);
+    // Apps that let go of the mic are forgotten, so the next call prompts again. Brief
+    // drops (browsers open and close the mic during a call) don't count.
+    for (const [key, s] of [...this.seen]) {
+      if (present.has(key)) continue;
+      s.goneAt ??= now;
+      if (now - s.goneAt > this.graceMs) this.seen.delete(key);
+    }
     for (const [key, c] of present) {
       const s = this.seen.get(key) || { label: c.label, since: now, prompted: false };
+      s.goneAt = null;
       this.seen.set(key, s);
       if (!s.prompted && now - s.since >= this.settleMs) {
         s.prompted = true; // once per call, whatever the answer
