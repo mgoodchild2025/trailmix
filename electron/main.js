@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { Store } from './store.js';
 import { TranscriptionSession } from './deepgram.js';
 import { streamClaude } from './llm.js';
@@ -13,7 +13,7 @@ import { findTemplate } from '../shared/templates.js';
 import { setupUpdater } from './updater.js';
 import { setupSync } from './sync.js';
 import { MeetingDetector } from './meeting-detect.js';
-import { watchMicrophone } from './micwatch.js';
+import { watchMicrophone, helperPath } from './micwatch.js';
 import { Overlay } from './overlay.js';
 import { createTray, isActive } from './tray.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from '../shared/core.js';
@@ -327,11 +327,15 @@ function registerIpc() {
   });
 
   handle('system:permissions', async () => {
-    if (!isMac) return { mic: 'granted', screen: 'granted', platform: process.platform };
+    if (!isMac) return { mic: 'granted', systemAudio: 'granted', platform: process.platform };
+    // Trailmix only needs "System Audio Recording Only"; full screen recording also
+    // covers it, so either counts.
+    const screen = systemPreferences.getMediaAccessStatus('screen');
+    const audio = await audioCaptureStatus();
     return {
       platform: process.platform,
       mic: systemPreferences.getMediaAccessStatus('microphone'),
-      screen: systemPreferences.getMediaAccessStatus('screen'),
+      systemAudio: screen === 'granted' || audio === 'granted' ? 'granted' : audio,
     };
   });
   handle('system:askMic', async () => (isMac ? systemPreferences.askForMediaAccess('microphone') : true));
@@ -593,6 +597,16 @@ function showWindow() {
   win.show();
   win.focus();
   if (isMac) app.focus({ steal: true });
+}
+
+// The "System Audio Recording Only" permission, read by the bundled helper.
+function audioCaptureStatus() {
+  return new Promise((resolve) => {
+    execFile(helperPath(), ['--audio-capture-status'], { timeout: 3000 }, (err, out) => {
+      const s = String(out || '').trim();
+      resolve(!err && ['granted', 'denied', 'not-determined'].includes(s) ? s : 'unknown');
+    });
+  });
 }
 
 // ---------- side panel ----------

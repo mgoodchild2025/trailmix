@@ -4,11 +4,32 @@
 // macOS 14+: Core Audio's per-process objects say which processes are capturing input.
 // Older macOS: only whether the default input device is in use by anything ("apps": []).
 // Reading these properties needs no permission; nothing is recorded.
+// With --audio-capture-status it instead prints the system-audio permission and exits.
 import AppKit
 import CoreAudio
 import Foundation
 
 setvbuf(stdout, nil, _IOLBF, 0)
+
+// `trailmix-micwatch --audio-capture-status` prints whether Trailmix may record system
+// audio ("System Audio Recording Only" in Privacy & Security): granted, denied or
+// unknown. macOS has no public API for this one, so ask TCC's preflight (read-only; it
+// never shows a prompt). The helper runs inside Trailmix, so TCC answers for Trailmix.
+if CommandLine.arguments.contains("--audio-capture-status") {
+  typealias Preflight = @convention(c) (CFString, CFDictionary?) -> Int
+  var status = "unknown"
+  if let tcc = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_NOW),
+     let sym = dlsym(tcc, "TCCAccessPreflight") {
+    let preflight = unsafeBitCast(sym, to: Preflight.self)
+    switch preflight("kTCCServiceAudioCapture" as CFString, nil) {
+    case 0: status = "granted"
+    case 1: status = "denied"
+    default: status = "not-determined"
+    }
+  }
+  print(status)
+  exit(0)
+}
 
 func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
   AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)

@@ -360,7 +360,7 @@ function useRecording({ toast, settings, onFinished, refreshList }) {
       if (!sysHeard.current && stateRef.current.state === 'live')
         setState((s) => ({
           ...s,
-          warnings: [...(s.warnings || []), 'No sound has come through from other apps yet. If people are talking, check Screen & System Audio Recording permission in Settings.'],
+          warnings: [...(s.warnings || []), 'No sound has come through from other apps yet. If people are talking, check that Trailmix is allowed under System Audio Recording Only (System Settings → Privacy & Security → Screen & System Audio Recording).'],
         }));
     }, 45000);
     return () => clearTimeout(t);
