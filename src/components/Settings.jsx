@@ -198,8 +198,8 @@ export default function Settings({ settings, onChange, toast, update }) {
           <section className="card">
             <h2>macOS permissions</h2>
             <p className="muted small">
-              Trailmix needs the microphone for your voice, and <b>Screen &amp; System Audio Recording</b> to hear other people on the call. Nothing on your screen is
-              recorded, and audio is never saved — only the transcript.
+              Trailmix needs the microphone for your voice, and <b>System Audio Recording Only</b> (in Screen &amp; System Audio Recording) to hear other people on
+              the call. It never records your screen, and audio is never saved — only the transcript.
             </p>
             <div className="perm-row">
               <span>Microphone</span>
@@ -209,8 +209,8 @@ export default function Settings({ settings, onChange, toast, update }) {
               </button>
             </div>
             <div className="perm-row">
-              <span>Screen &amp; System Audio Recording</span>
-              <PermChip status={perms.screen} />
+              <span>System audio recording</span>
+              <PermChip status={perms.systemAudio} />
               <button className="btn small" onClick={() => api.system.openPrivacy('screen')}>
                 Open settings
               </button>
@@ -409,7 +409,8 @@ function updateText(u) {
 
 function PermChip({ status }) {
   const ok = status === 'granted';
-  return <span className={`chip tiny ${ok ? 'ok' : 'warn'}`}>{ok ? 'Allowed' : status.replace('-', ' ')}</span>;
+  const text = { granted: 'Allowed', denied: 'Not allowed', 'not-determined': 'Not asked yet', restricted: 'Blocked by your organisation' }[status] || "Couldn't check";
+  return <span className={`chip tiny ${ok ? 'ok' : 'warn'}`}>{text}</span>;
 }
 
 function Templates({ custom, onSave }) {

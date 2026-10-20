@@ -148,7 +148,7 @@ function createDemoBridge() {
     notesReady: () => {},
     overlay: { get: async () => demoOverlay(), onState: () => () => {}, act: () => {} },
     system: {
-      permissions: async () => ({ platform: 'demo', mic: 'granted', screen: 'granted' }),
+      permissions: async () => ({ platform: 'demo', mic: 'granted', systemAudio: 'granted' }),
       askMic: async () => true,
       openPrivacy: async () => {},
       openDataFolder: async () => {},

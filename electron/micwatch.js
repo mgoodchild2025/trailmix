@@ -9,7 +9,7 @@ import { parseWindowsConsentStore } from './meeting-detect.js';
 
 const WIN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone';
 
-function helperPath() {
+export function helperPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'trailmix-micwatch')
     : path.join(import.meta.dirname, '..', 'build', 'bin', 'trailmix-micwatch');
