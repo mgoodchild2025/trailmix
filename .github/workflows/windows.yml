@@ -66,6 +66,20 @@ jobs:
           # count as access to the subscription; signing just needs the token.
           allow-no-subscriptions: true
 
+      # electron-builder signs the app's own executables, not extra files; sign the helper.
+      - name: Sign meeting detection helper
+        if: vars.AZURE_CLIENT_ID != ''
+        shell: pwsh
+        env:
+          ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          Install-Module -Name TrustedSigning -MinimumVersion 0.5.0 -Force -Repository PSGallery -Scope CurrentUser
+          Invoke-TrustedSigning -Endpoint $env:ENDPOINT -CodeSigningAccountName $env:ACCOUNT -CertificateProfileName $env:PROFILE `
+            -FileDigest SHA256 -TimestampRfc3161 'http://timestamp.acs.microsoft.com' -TimestampDigest SHA256 `
+            -Files (Resolve-Path build\bin\trailmix-micwatch.exe).Path
+
       - name: Build installer
         shell: bash
         env:
