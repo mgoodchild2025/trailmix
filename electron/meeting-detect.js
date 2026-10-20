@@ -6,7 +6,7 @@
 // "com.google.Chrome.helper" share their app's prefix); Windows entries match the exe
 // file name or the packaged app's family name.
 export const MEETING_APPS = [
-  { name: 'Teams', mac: ['com.microsoft.teams2', 'com.microsoft.teams'], win: ['ms-teams.exe', 'teams.exe', 'msteams_'] },
+  { name: 'Teams', mac: ['com.microsoft.teams2', 'com.microsoft.teams'], win: ['ms-teams', 'teams.exe', 'msteams_'] },
   { name: 'Zoom', mac: ['us.zoom.'], win: ['zoom.exe', 'cpthost.exe'] },
   { name: 'Webex', mac: ['com.cisco.webexmeetingsapp', 'com.webex.', 'com.cisco.webex'], win: ['webex.exe', 'ciscowebexstart.exe', 'atmgr.exe'] },
   { name: 'Slack', mac: ['com.tinyspeck.slackmacgap'], win: ['slack.exe'] },

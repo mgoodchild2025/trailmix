@@ -28,6 +28,15 @@ jobs:
       - run: npm ci
       - run: npm test
 
+      # Meeting detection helper: asks the Windows audio system which apps are capturing
+      # from a microphone (native/win/micwatch.cpp). Bundled as resources/trailmix-micwatch.exe.
+      - uses: ilammy/msvc-dev-cmd@v1.13.0
+      - name: Build meeting detection helper
+        shell: cmd
+        run: |
+          mkdir build\bin 2>nul
+          cl /nologo /O2 /EHsc /std:c++17 /DUNICODE /D_UNICODE native\win\micwatch.cpp /Fe:build\bin\trailmix-micwatch.exe /Fo:build\ ole32.lib
+
       - name: Check tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -82,7 +91,7 @@ jobs:
         if: vars.AZURE_CLIENT_ID != ''
         shell: pwsh
         run: |
-          foreach ($f in Get-ChildItem release\*.exe, release\win-unpacked\Trailmix.exe) {
+          foreach ($f in Get-ChildItem release\*.exe, release\win-unpacked\Trailmix.exe, release\win-unpacked\resources\trailmix-micwatch.exe) {
             $sig = Get-AuthenticodeSignature $f.FullName
             if ($sig.Status -ne 'Valid') { Write-Error "$($f.Name): signature $($sig.Status)"; exit 1 }
             Write-Host "$($f.Name): signed by $($sig.SignerCertificate.Subject)"
@@ -104,7 +113,7 @@ jobs:
           $r = Get-Content $out -Raw
           Write-Host $r
           $j = $r | ConvertFrom-Json
-          if (-not $j.tray -or -not $j.detection -or $j.errors.Count -gt 0) { Write-Error 'Smoke test failed (see report above)'; exit 1 }
+          if (-not $j.tray -or -not $j.detection -or $j.micReports -lt 1 -or $j.errors.Count -gt 0) { Write-Error 'Smoke test failed (see report above)'; exit 1 }
 
       # electron-builder's own publishing uploads files in parallel and can create two
       # drafts for one tag, so create (or reuse) the draft once and upload in sequence.

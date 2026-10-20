@@ -60,7 +60,13 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "build/bin/trailmix-micwatch.exe",
+          "to": "trailmix-micwatch.exe"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
