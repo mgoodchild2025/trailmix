@@ -23,6 +23,9 @@ export const DEFAULT_SETTINGS = {
   openAtLogin: true, // start in the menu bar / tray when the user logs in (installed app only)
   showRecordingIndicator: true, // floating timer + stop button while recording in another app
   trayHintShown: false, // Windows: told the user that closing the window keeps Trailmix in the tray
+  micDeviceId: '', // microphone to record from; '' = the system default
+  micLabel: '', // its name, to find it again if the ID changes
+  theme: 'system', // 'system' | 'light' | 'dark'
   coreInfo: null, // last /me response from CG Core: staff, device, features, config
 };
 

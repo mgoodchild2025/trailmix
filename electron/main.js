@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification, nativeTheme } from 'electron';
 import { marked } from 'marked';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -39,6 +39,34 @@ const aborts = new Map(); // requestId -> AbortController
 // Lets tests or IT point the app at a different data folder.
 if (process.env.TRAILMIX_DATA_DIR) app.setPath('userData', process.env.TRAILMIX_DATA_DIR);
 
+// ---------- error log ----------
+// Main-process problems go to <userData>/logs/main.log (Settings → Open data folder), so a
+// failure on a staff PC can be diagnosed. Nothing from meetings is written here.
+const startupErrors = [];
+function logLine(msg) {
+  const line = `${new Date().toISOString()} ${msg}`;
+  console.log(line);
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'main.log');
+    if (fs.existsSync(file) && fs.statSync(file).size > 512 * 1024) fs.renameSync(file, `${file}.old`);
+    fs.appendFileSync(file, `${line}\n`);
+  } catch {}
+}
+const errText = (err) => (err?.stack || String(err)).split('\n').slice(0, 6).join('\n');
+process.on('uncaughtException', (err) => logLine(`uncaught: ${errText(err)}`));
+process.on('unhandledRejection', (err) => logLine(`unhandled rejection: ${errText(err)}`));
+// Runs one startup step; a failure is logged and the rest of startup carries on.
+function step(name, fn) {
+  try {
+    return fn();
+  } catch (err) {
+    startupErrors.push(`${name}: ${err?.message || err}`);
+    logLine(`startup step "${name}" failed: ${errText(err)}`);
+  }
+}
+
 // ---------- trailmix:// links (CG Core sign-in) ----------
 // Only the installed app registers the scheme, so a dev copy never hijacks it; in dev,
 // use "paste the code" in Settings instead.
@@ -66,7 +94,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 620,
     title: 'Trailmix',
-    backgroundColor: '#ffffff',
+    backgroundColor: windowBackground(),
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     show: false,
@@ -244,6 +272,7 @@ function registerIpc() {
     if ('detectMeetings' in patch || 'detectAnyApp' in patch) setupMeetingDetection();
     if ('openAtLogin' in patch) applyLoginItem();
     if ('showRecordingIndicator' in patch) refreshOverlay();
+    if ('theme' in patch) applyTheme();
     return withApp(out);
   });
 
@@ -555,7 +584,7 @@ function showWindow() {
 const PROMPT_MS = 60_000; // an unanswered prompt goes away after a minute
 
 function showPrompt(p) {
-  if (!app.isPackaged) console.log(`[detect] ${p.mode}: ${p.label}`);
+  logLine(`[detect] ${p.mode}: ${p.label}`);
   clearTimeout(promptTimer);
   prompt = p;
   promptTimer = setTimeout(() => {
@@ -663,14 +692,15 @@ function setupMeetingDetection() {
   let current = [];
   const stopMic = watchMicrophone(
     (apps) => {
-      // Dev builds log what the OS reports, to make detection easy to check.
+      // Log what the OS reports (app names only), to make detection easy to check.
       const seen = apps.map((a) => a.bundleId || a.exe).join(', ');
-      if (!app.isPackaged && seen !== last) console.log(`[detect] using the mic: ${seen || 'nothing'}`);
+      if (seen !== last) logLine(`[detect] using the mic: ${seen || 'nothing'}`);
       last = seen;
       current = apps;
+      smokeMicReports++;
       detector?.update(apps);
     },
-    (msg) => console.warn(msg),
+    (msg) => logLine(msg),
   );
   // The macOS watcher only reports changes, so re-check every second for the timers.
   const ticker = setInterval(() => detector?.update(current), 1000);
@@ -689,12 +719,44 @@ async function stopLive() {
   send('transcribe:event', { type: 'status', meetingId, state: 'stopped' });
 }
 
+// Light, dark or follow the system. Electron passes this to the pages as
+// prefers-color-scheme, so the CSS (and the floating window) follow automatically.
+const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#18191c' : '#ffffff');
+function applyTheme() {
+  const t = store.settings().theme;
+  nativeTheme.themeSource = ['light', 'dark'].includes(t) ? t : 'system';
+}
+nativeTheme.on('updated', () => {
+  if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground());
+});
+
+// CI smoke test: start the packaged app, report what came up, quit.
+function smokeReport() {
+  setTimeout(() => {
+    const login = canOpenAtLogin() ? app.getLoginItemSettings(isMac ? {} : { args: ['--hidden'] }) : null;
+    const report = {
+      version: app.getVersion(),
+      tray: !!tray,
+      overlay: !!overlay,
+      detection: !!stopWatching,
+      micReports: smokeMicReports,
+      openAtLogin: login ? { openAtLogin: login.openAtLogin, executableWillLaunchAtLogin: login.executableWillLaunchAtLogin, launchItems: login.launchItems } : 'not packaged',
+      errors: startupErrors,
+    };
+    fs.writeFileSync(process.env.TRAILMIX_SMOKE_OUT, JSON.stringify(report, null, 2));
+    quitting = true;
+    app.exit(0);
+  }, 8000);
+}
+let smokeMicReports = 0;
+
 // Windows shows this ID's app name and icon on notifications; it must match the
 // installer's appId (package.json build.appId).
 if (process.platform === 'win32') app.setAppUserModelId('com.cgtechnologies.trailmix');
 
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'), safeStorage);
+  step('theme', applyTheme);
   setupDisplayMedia();
   updater = setupUpdater({
     send: (ch, st) => {
@@ -724,21 +786,29 @@ app.whenReady().then(() => {
     },
   });
   registerIpc();
-  startHidden = process.argv.includes('--hidden') || (isMac && app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin);
-  applyLoginItem();
-  createWindow();
-  overlay = new Overlay({ preload: path.join(here, 'preload.cjs'), load: loadPage, isMac });
-  tray = createTray({
-    isMac,
-    assetsDir: path.join(here, 'assets', 'tray'),
-    onCommand: trayCommand,
-    onOpen: showWindow,
-    dev: !app.isPackaged,
+  logLine(`Trailmix ${app.getVersion()} starting on ${process.platform} ${os.release()}${process.argv.includes('--hidden') ? ' (at login)' : ''}`);
+  step('start hidden check', () => {
+    startHidden = process.argv.includes('--hidden') || (isMac && app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin);
   });
-  tray.setUpdate(updater.status());
+  step('open at login', applyLoginItem);
+  createWindow();
+  step('overlay', () => {
+    overlay = new Overlay({ preload: path.join(here, 'preload.cjs'), load: loadPage, isMac });
+  });
+  step('tray', () => {
+    tray = createTray({
+      isMac,
+      assetsDir: path.join(here, 'assets', 'tray'),
+      onCommand: trayCommand,
+      onOpen: showWindow,
+      dev: !app.isPackaged,
+    });
+    tray.setUpdate(updater.status());
+  });
   refreshCore();
   setInterval(refreshCore, 30 * 60 * 1000);
-  setupMeetingDetection();
+  step('meeting detection', setupMeetingDetection);
+  if (process.env.TRAILMIX_SMOKE_OUT) smokeReport();
   if (pendingLink) win.webContents.once('did-finish-load', () => handleLink(pendingLink));
   // Dock icon clicked (macOS): bring the window back. (Not for the activation that comes
   // with launching, or a login-item start would open the window anyway.)

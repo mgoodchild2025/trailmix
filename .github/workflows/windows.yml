@@ -88,6 +88,24 @@ jobs:
             Write-Host "$($f.Name): signed by $($sig.SignerCertificate.Subject)"
           }
 
+      # Start the packaged app for a few seconds and check the tray, meeting detection and
+      # open-at-login came up (none of that is covered by the unit tests).
+      - name: Smoke test the packaged app
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'trailmix-smoke'
+          $out = Join-Path $env:RUNNER_TEMP 'smoke.json'
+          $env:TRAILMIX_DATA_DIR = $data
+          $env:TRAILMIX_SMOKE_OUT = $out
+          $p = Start-Process -FilePath 'release\win-unpacked\Trailmix.exe' -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); Write-Error 'Trailmix did not finish the smoke test in 60 s'; exit 1 }
+          if (Test-Path "$data\logs\main.log") { Get-Content "$data\logs\main.log" }
+          if (-not (Test-Path $out)) { Write-Error 'No smoke report was written'; exit 1 }
+          $r = Get-Content $out -Raw
+          Write-Host $r
+          $j = $r | ConvertFrom-Json
+          if (-not $j.tray -or -not $j.detection -or $j.errors.Count -gt 0) { Write-Error 'Smoke test failed (see report above)'; exit 1 }
+
       # electron-builder's own publishing uploads files in parallel and can create two
       # drafts for one tag, so create (or reuse) the draft once and upload in sequence.
       - name: Upload to draft release

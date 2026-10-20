@@ -39,6 +39,31 @@ class PcmTap extends AudioWorkletProcessor {
 registerProcessor('pcm-tap', PcmTap);
 `;
 
+const MIC_OPTIONS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+
+// Microphones the user can pick in Settings. The browser's "default" and Windows'
+// "communications" entries are aliases of real devices, so they're left out.
+export async function listMics() {
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  return devices.filter((d) => d.kind === 'audioinput' && d.deviceId && !['default', 'communications'].includes(d.deviceId)).map((d) => ({ id: d.deviceId, label: d.label }));
+}
+
+// The chosen microphone, or the system default if it isn't plugged in. Device IDs can
+// change (driver updates, a different USB port), so a missing ID is looked up by name.
+async function openMic({ deviceId, label } = {}, warnings) {
+  if (deviceId) {
+    const mics = await listMics();
+    const id = mics.find((m) => m.id === deviceId)?.id || (label && mics.find((m) => m.label === label)?.id);
+    if (id) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: { ...MIC_OPTIONS, deviceId: { exact: id } } });
+      } catch {}
+    }
+    warnings.push(`${label || 'Your chosen microphone'} isn't available, so Trailmix is using the system default microphone.`);
+  }
+  return navigator.mediaDevices.getUserMedia({ audio: MIC_OPTIONS });
+}
+
 export class Recorder {
   constructor({ onAudio, onLevel } = {}) {
     this.onAudio = onAudio;
@@ -46,7 +71,7 @@ export class Recorder {
     this.streams = [];
   }
 
-  async start({ wantSystemAudio = true } = {}) {
+  async start({ wantSystemAudio = true, mic: micChoice } = {}) {
     const warnings = [];
     this.ctx = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
@@ -58,9 +83,7 @@ export class Recorder {
 
     let mic;
     try {
-      mic = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-      });
+      mic = await openMic(micChoice, warnings);
       this.streams.push(mic);
     } catch (err) {
       await this.stop();
