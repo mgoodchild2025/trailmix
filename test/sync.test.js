@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SyncEngine, mergeMeetings, touch } from '../shared/sync.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Store } from '../electron/store.js';
 
 // In-memory CG Core following docs/cg-core-api.md section 5.
 // Postgres jsonb returns objects with keys sorted (and recursively), like this.
@@ -236,4 +240,20 @@ test('meetings saved before sync existed settle after one upload', async () => {
   await d.engine.sync();
   assert.equal(core.rows.get('old').version, 1);
   assert.equal(d.engine.state().items.old.dirty, false);
+});
+
+test('editing a meeting on the desktop wins over an older copy elsewhere', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trailmix-'));
+  const safe = { isEncryptionAvailable: () => false, encryptString: (x) => Buffer.from(x), decryptString: (b) => b.toString() };
+  const store = new Store(dir, safe);
+  const m = store.create({ title: 'Interview' });
+  const older = structuredClone(store.get(m.id)); // what another device had
+  await new Promise((r) => setTimeout(r, 5));
+  store.patch(m.id, { notes: 'well spoken\ndressed well' });
+  const edited = store.get(m.id);
+  assert.ok(edited.fieldTimes.notes > older.fieldTimes.notes, 'the edit is timestamped');
+  assert.equal(edited.fieldTimes.title, older.fieldTimes.title, 'untouched fields keep their time');
+  assert.equal(mergeMeetings(older, edited).notes, 'well spoken\ndressed well');
+  assert.equal(mergeMeetings(edited, older).notes, 'well spoken\ndressed well');
+  store.flushAll();
 });
