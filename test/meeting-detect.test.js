@@ -120,3 +120,27 @@ test('a long gap starts the count again', () => {
   d.update(zoom, 8500);
   assert.deepEqual(events, [['prompt', 'Zoom']]);
 });
+
+test('a new mic session from the same app is a new call, even without a gap', () => {
+  const { d, events } = run({ platform: 'win32' });
+  const teams = (session) => [{ exe: 'ms-teams.exe', session }];
+  d.update(teams('100'), 0);
+  d.update(teams('100'), 3000);
+  assert.deepEqual(events, [['prompt', 'Teams']]);
+  // Windows never recorded the end of that call; the next one has a new start time.
+  d.update(teams('100'), 600000);
+  d.update(teams('200'), 900000);
+  d.update(teams('200'), 903000);
+  assert.deepEqual(events, [['prompt', 'Teams'], ['prompt', 'Teams']]);
+});
+
+test('the consent store parser reports when each app started using the mic', () => {
+  const out = [
+    'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\MSTeams_8wekyb3d8bbwe',
+    '    LastUsedTimeStart    REG_QWORD    0x1dc4f00aa000000',
+    '    LastUsedTimeStop    REG_QWORD    0x0',
+  ].join('\r\n');
+  const apps = parseWindowsConsentStore(out);
+  assert.equal(apps.length, 1);
+  assert.equal(apps[0].session, BigInt('0x1dc4f00aa000000').toString());
+});

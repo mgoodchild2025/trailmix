@@ -71,7 +71,7 @@ function watchWindows(onApps, log) {
   let regFailed = false;
   const emit = () => {
     const seen = new Map();
-    for (const a of [...fromHelper, ...fromConsent]) if (!seen.has(a.exe)) seen.set(a.exe, a);
+    for (const a of [...fromHelper, ...fromConsent]) seen.set(a.exe, { ...seen.get(a.exe), ...a });
     onApps([...seen.values()]);
   };
   const stopHelper = watchHelper(['--parent', String(process.pid)], (apps) => {

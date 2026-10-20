@@ -49,7 +49,9 @@ export function parseWindowsConsentStore(text) {
   const apps = [];
   let current = null;
   const flush = () => {
-    if (current && current.start > 0n && current.stop === 0n) apps.push({ exe: current.id, name: prettyExe(current.id) });
+    // `session` is when it started using the mic: a new value means a new call, even if
+    // Windows never recorded the end of the last one (a crash or sleep leaves Stop at 0).
+    if (current && current.start > 0n && current.stop === 0n) apps.push({ exe: current.id, name: prettyExe(current.id), session: current.start.toString() });
     current = null;
   };
   for (const raw of text.split(/\r?\n/)) {
@@ -91,7 +93,9 @@ export class MeetingDetector {
     const present = new Map();
     for (const a of rawApps) {
       const c = classify(a, this.platform);
-      if (c && (c.known || this.anyApp)) present.set(c.key, c);
+      if (!c || !(c.known || this.anyApp)) continue;
+      const prev = present.get(c.key);
+      present.set(c.key, { ...c, session: a.session || prev?.session || null });
     }
     // Apps that let go of the mic are forgotten, so the next call prompts again. Brief
     // drops (browsers open and close the mic during a call) don't count.
@@ -101,7 +105,11 @@ export class MeetingDetector {
       if (now - s.goneAt > this.graceMs) this.seen.delete(key);
     }
     for (const [key, c] of present) {
-      const s = this.seen.get(key) || { label: c.label, since: now, prompted: false };
+      let s = this.seen.get(key);
+      // The OS says this is a new mic session for the app: treat it as a new call.
+      if (s && c.session && s.session && c.session !== s.session) s = null;
+      if (!s) s = { label: c.label, since: now, prompted: false };
+      if (c.session) s.session = c.session;
       s.goneAt = null;
       this.seen.set(key, s);
       if (!s.prompted && now - s.since >= this.settleMs) {
