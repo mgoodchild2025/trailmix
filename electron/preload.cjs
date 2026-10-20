@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('trailmix', {
   // Commands from the tray menu and the floating prompt/indicator: { cmd, meetingId }.
   commands: { on: (cb) => on('app:command', cb) },
   rec: { report: (state) => ipcRenderer.send('rec:state', state) },
+  window: { setCompact: invoke('window:compact'), pin: invoke('window:pin') },
+  notesReady: (info) => ipcRenderer.send('notes:ready', info),
   overlay: {
     get: invoke('overlay:get'),
     onState: (cb) => on('overlay:state', cb),

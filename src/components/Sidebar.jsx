@@ -3,7 +3,7 @@ import Icon from './Icon.jsx';
 import { dayGroup } from '../lib/util.js';
 import { api } from '../lib/bridge.js';
 
-export default function Sidebar({ meetings, selectedId, view, query, onQuery, matches, onSelect, onNew, onAsk, onSettings, rec }) {
+export default function Sidebar({ meetings, selectedId, view, query, onQuery, matches, onSelect, onNew, onAsk, onSettings, rec, enhancingId }) {
   const groups = useMemo(() => {
     const list = matches ? meetings.filter((m) => matches.includes(m.id)) : meetings;
     const out = [];
@@ -54,6 +54,7 @@ export default function Sidebar({ meetings, selectedId, view, query, onQuery, ma
                 <button className="meeting-item" onClick={() => onSelect(m.id)}>
                   <span className="meeting-title">
                     {rec.meetingId === m.id && rec.state !== 'idle' && <span className="rec-dot" />}
+                    {enhancingId === m.id && <span className="spinner small" title="Writing notes…" />}
                     {m.title || 'Untitled meeting'}
                   </span>
                   <span className="meeting-meta">

@@ -9,7 +9,7 @@ import RecorderControls from './RecorderControls.jsx';
 import TranscriptPanel from './TranscriptPanel.jsx';
 import ChatPanel from './ChatPanel.jsx';
 
-export default function MeetingView({ id, settings, rec, levels, elapsed, interim, recorder, autoEnhance, clearAutoEnhance, refreshList, toast, onDeleted, openSettings }) {
+export default function MeetingView({ id, settings, rec, levels, elapsed, interim, recorder, autoEnhance, clearAutoEnhance, refreshList, toast, onDeleted, openSettings, compact = false, onCompact = () => {}, onEnhancing = () => {} }) {
   const [meeting, setMeeting] = useState(null);
   const [tab, setTab] = useState('notes');
   const [showTranscript, setShowTranscript] = useState(false);
@@ -17,6 +17,7 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
   const [streaming, setStreaming] = useState(null); // { requestId, text }
   const [editing, setEditing] = useState(false);
   const [templateId, setTemplateId] = useState(settings.defaultTemplateId);
+  const [pinned, setPinned] = useState(false);
   const saveTimer = useRef(null);
   const pendingPatch = useRef({});
 
@@ -105,20 +106,23 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
       setEditing(false);
       setTab('enhanced');
       setStreaming({ requestId, text: '' });
+      onEnhancing(id);
       const off = api.ai.onDelta((d) => d.requestId === requestId && setStreaming((s) => s && { ...s, text: s.text + d.text }));
       try {
         const fields = await api.ai.enhance({ requestId, meetingId: id, templateId: tplId });
         setMeeting((m) => ({ ...m, ...fields }));
         refreshList();
+        api.notesReady({ title: fields.title || meeting?.title });
       } catch (e) {
         if (!/Cancelled/.test(errMsg(e))) toast(errMsg(e));
         setTab((t) => (meeting?.enhanced ? t : 'notes'));
       } finally {
         off();
         setStreaming(null);
+        onEnhancing(null);
       }
     },
-    [id, templateId, settings.hasAnthropicKey, flush, refreshList, toast, openSettings, meeting?.enhanced],
+    [id, templateId, settings.hasAnthropicKey, flush, refreshList, toast, openSettings, meeting?.enhanced, meeting?.title, onEnhancing],
   );
 
   useEffect(() => {
@@ -133,6 +137,64 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
   const enhancedMd = streaming ? streaming.text : meeting.enhanced;
   const canEnhance = !streaming && !isLive && (meeting.transcript.length > 0 || meeting.notes.trim());
   const duration = durationOf(meeting.transcript);
+
+  const recorderControls = (
+    <RecorderControls
+      isThis={rec.meetingId === id}
+      rec={rec}
+      levels={levels}
+      elapsed={elapsed}
+      onStart={() => recorder.start(id)}
+      onStop={recorder.stop}
+      onPause={recorder.pause}
+      onResume={recorder.resume}
+      compact={compact}
+    />
+  );
+
+  // Side panel while recording: the title, the recorder and room for notes.
+  if (compact) {
+    const lastLine = (rec.meetingId === id && (interim?.[1] || interim?.[0])) || meeting.transcript.at(-1)?.text || '';
+    return (
+      <main className="main meeting panel">
+        <header className="panel-head drag">
+          <div className="panel-bar">
+            <span className="panel-brand muted small">Trailmix</span>
+            <button
+              className={`icon-btn no-drag ${pinned ? 'on' : ''}`}
+              onClick={() => api.window.pin(!pinned).then(setPinned)}
+              title={pinned ? 'Stop keeping on top' : 'Keep on top of other windows'}
+              aria-pressed={pinned}
+            >
+              <Icon name="pin" />
+            </button>
+            <button className="icon-btn no-drag" onClick={() => onCompact(false)} title="Open full view">
+              <Icon name="expand" />
+            </button>
+          </div>
+          <input className="title-input no-drag" value={meeting.title} placeholder="Untitled meeting" onChange={(e) => update({ title: e.target.value })} />
+          <div className="panel-rec no-drag">{recorderControls}</div>
+        </header>
+        {isLive && rec.warnings?.map((w) => (
+          <div key={w} className="banner warn">
+            <Icon name="warn" /> {w}
+          </div>
+        ))}
+        <textarea
+          className="notes-editor panel-notes"
+          value={meeting.notes}
+          onChange={(e) => update({ notes: e.target.value })}
+          placeholder="Jot down anything important — short phrases are fine. Trailmix fills in the rest from the transcript."
+          autoFocus
+        />
+        {isLive && (
+          <div className="panel-caption muted small" title="Latest from the transcript">
+            <Icon name="transcript" size={12} /> <span>{lastLine || 'Listening…'}</span>
+          </div>
+        )}
+      </main>
+    );
+  }
 
   async function copyNotes() {
     const md = stripMarks(meeting.enhanced || meeting.notes);
@@ -162,16 +224,12 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           </div>
         </div>
         <div className="meeting-head-right no-drag">
-          <RecorderControls
-            isThis={rec.meetingId === id}
-            rec={rec}
-            levels={levels}
-            elapsed={elapsed}
-            onStart={() => recorder.start(id)}
-            onStop={recorder.stop}
-            onPause={recorder.pause}
-            onResume={recorder.resume}
-          />
+          {recorderControls}
+          {isLive && (
+            <button className="icon-btn" onClick={() => onCompact(true)} title="Switch to side panel">
+              <Icon name="panel" />
+            </button>
+          )}
         </div>
       </header>
 
@@ -187,7 +245,7 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
             My notes
           </button>
           <button className={tab === 'enhanced' ? 'on' : ''} onClick={() => setTab('enhanced')} disabled={!meeting.enhanced && !streaming}>
-            Enhanced
+            {streaming && <span className="spinner small" aria-hidden="true" />} Enhanced
           </button>
         </div>
         <div className="row gap-s">
@@ -252,10 +310,14 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
               </>
             ) : (
               <>
-                {streaming && !streaming.text && (
-                  <p className="muted thinking">
-                    <Icon name="sparkle" /> Reading your notes and the transcript…
-                  </p>
+                {streaming && (
+                  <div className="enhance-status" role="status">
+                    <span className="spinner" aria-hidden="true" />
+                    <div>
+                      <b>{streaming.text ? 'Writing your notes…' : 'Reading your notes and the transcript…'}</b>
+                      <span className="muted small">This usually takes under a minute. You can keep working.</span>
+                    </div>
+                  </div>
                 )}
                 <article className={`prose enhanced ${streaming ? 'streaming' : ''}`} dangerouslySetInnerHTML={{ __html: renderMarkdown(enhancedMd) }} />
                 {!streaming && meeting.enhanced && (

@@ -20,6 +20,8 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [autoEnhance, setAutoEnhance] = useState(null);
   const [update, setUpdate] = useState(null);
+  const [compact, setCompactState] = useState(false); // notes side panel while recording
+  const [enhancingId, setEnhancingId] = useState(null);
 
   const toast = useCallback((text, kind = 'error') => {
     const id = Math.random();
@@ -52,7 +54,13 @@ export default function App() {
     return () => clearTimeout(t);
   }, [query, meetings]);
 
-  const rec = useRecording({ toast, settings, onFinished: (id) => settings?.autoEnhance && setAutoEnhance(id), refreshList });
+  // When a recording stops, open that meeting so its notes are written (and seen) there.
+  const onFinished = (id) => {
+    if (!settings?.autoEnhance) return;
+    setAutoEnhance(id);
+    select(id);
+  };
+  const rec = useRecording({ toast, settings, onFinished, refreshList });
 
   // A meeting deleted from the sidebar menu: stop its recording, leave its page.
   const recRef = useRef(rec);
@@ -83,6 +91,26 @@ export default function App() {
     if (record) rec.start(m.id);
   };
 
+  const setCompact = useCallback((on) => {
+    setCompactState(on);
+    api.window.setCompact(on);
+  }, []);
+
+  // Recording starts: become a side panel with room for notes (if enabled). Recording
+  // stops: back to the full window on that meeting, where the notes get written.
+  const prevRec = useRef(rec.state.state);
+  useEffect(() => {
+    const was = prevRec.current;
+    const now = rec.state.state;
+    prevRec.current = now;
+    if (was === 'idle' && now !== 'idle' && settings?.compactWhileRecording !== false) setCompact(true);
+    if (was !== 'idle' && now === 'idle') {
+      setCompact(false);
+    }
+  }, [rec.state.state, settings?.compactWhileRecording, setCompact]);
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
+
   // Commands from the tray menu and the floating prompt / recording indicator.
   const newMeetingRef = useRef(newMeeting);
   newMeetingRef.current = newMeeting;
@@ -98,9 +126,12 @@ export default function App() {
         else if (cmd === 'pause') r.pause();
         else if (cmd === 'resume') r.resume();
         else if (cmd === 'open' && (meetingId || r.state.meetingId)) select(meetingId || r.state.meetingId);
-        else if (cmd === 'settings') setView('settings');
+        else if (cmd === 'settings') {
+          if (compactRef.current) setCompact(false);
+          setView('settings');
+        }
       }),
-    [],
+    [setCompact],
   );
 
   // Tell the tray and the recording indicator what's happening.
@@ -113,6 +144,50 @@ export default function App() {
   if (!settings) return <div className="app loading" />;
 
   const setupNeeded = !settings.hasDeepgramKey || !settings.hasAnthropicKey;
+
+  const meetingView = selectedId && (
+    <MeetingView
+      key={selectedId}
+      id={selectedId}
+      settings={settings}
+      rec={rec.state}
+      levels={rec.levels}
+      elapsed={rec.elapsed}
+      interim={rec.interim}
+      recorder={rec}
+      autoEnhance={autoEnhance}
+      clearAutoEnhance={() => setAutoEnhance(null)}
+      refreshList={refreshList}
+      toast={toast}
+      onDeleted={() => {
+        setSelectedId(null);
+        setView('home');
+        refreshList();
+      }}
+      openSettings={() => {
+        setCompact(false);
+        setView('settings');
+      }}
+      compact={compact}
+      onCompact={setCompact}
+      onEnhancing={setEnhancingId}
+    />
+  );
+
+  if (compact && view === 'meeting' && selectedId) {
+    return (
+      <div className={`app compact platform-${api.platform}`}>
+        {meetingView}
+        <div className="toasts" role="status">
+          {toasts.map((t) => (
+            <div key={t.id} className={`toast ${t.kind}`}>
+              {t.kind === 'error' ? <Icon name="warn" /> : <Icon name="check" />} {t.text}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`app platform-${api.platform}`}>
@@ -128,29 +203,11 @@ export default function App() {
         onAsk={() => setView('ask')}
         onSettings={() => setView('settings')}
         rec={rec.state}
+        enhancingId={enhancingId}
       />
 
       {view === 'meeting' && selectedId ? (
-        <MeetingView
-          key={selectedId}
-          id={selectedId}
-          settings={settings}
-          rec={rec.state}
-          levels={rec.levels}
-          elapsed={rec.elapsed}
-          interim={rec.interim}
-          recorder={rec}
-          autoEnhance={autoEnhance}
-          clearAutoEnhance={() => setAutoEnhance(null)}
-          refreshList={refreshList}
-          toast={toast}
-          onDeleted={() => {
-            setSelectedId(null);
-            setView('home');
-            refreshList();
-          }}
-          openSettings={() => setView('settings')}
-        />
+        meetingView
       ) : view === 'settings' ? (
         <Settings settings={settings} onChange={setSettings} toast={toast} update={update} />
       ) : view === 'ask' ? (

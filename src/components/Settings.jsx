@@ -157,7 +157,7 @@ export default function Settings({ settings, onChange, toast, update }) {
         </section>
 
         <section className="card">
-          <h2>Menu bar and startup</h2>
+          <h2>Window, menu bar and startup</h2>
           <p className="muted small">
             Trailmix lives in the {api.platform === 'win32' ? 'system tray' : 'menu bar'}, so it's ready when a meeting starts. Closing the window keeps it running there;
             quit from the {api.platform === 'win32' ? 'tray' : 'menu bar'} icon.
@@ -165,6 +165,10 @@ export default function Settings({ settings, onChange, toast, update }) {
           <label className="check">
             <input type="checkbox" checked={draft.openAtLogin !== false} disabled={!settings.canOpenAtLogin} onChange={(e) => save({ openAtLogin: e.target.checked })} />
             Open Trailmix when I log in{!settings.canOpenAtLogin && <span className="muted small"> (in the installed app)</span>}
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={draft.compactWhileRecording !== false} onChange={(e) => save({ compactWhileRecording: e.target.checked })} />
+            Switch to a notes side panel while recording
           </label>
           <label className="check">
             <input type="checkbox" checked={draft.showRecordingIndicator !== false} onChange={(e) => save({ showRecordingIndicator: e.target.checked })} />

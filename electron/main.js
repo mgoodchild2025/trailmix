@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification, nativeTheme, screen } from 'electron';
 import { marked } from 'marked';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -34,6 +34,7 @@ let prompt = null; // overlay prompt from meeting detection: { mode: 'prompt' | 
 let promptTimer = null;
 let quitting = false; // set once the app is really quitting (closing the window only hides it)
 let quitConfirmed = false;
+let compact = null; // side-panel mode while recording: { full: bounds to go back to, pinned }
 const aborts = new Map(); // requestId -> AbortController
 
 // Lets tests or IT point the app at a different data folder.
@@ -274,6 +275,20 @@ function registerIpc() {
     if ('showRecordingIndicator' in patch) refreshOverlay();
     if ('theme' in patch) applyTheme();
     return withApp(out);
+  });
+
+  // ----- side panel while recording -----
+  ipcMain.handle('window:compact', (_e, on) => setCompact(!!on));
+  ipcMain.handle('window:pin', (_e, on) => {
+    if (!compact || !win || win.isDestroyed()) return false;
+    compact.pinned = !!on;
+    win.setAlwaysOnTop(compact.pinned, 'floating');
+    return compact.pinned;
+  });
+  // Notes finished writing while you were in another app.
+  ipcMain.on('notes:ready', (e, { title }) => {
+    if (e.sender !== win?.webContents || win.isFocused()) return;
+    notify({ title: 'Your notes are ready', body: title || 'Untitled meeting' });
   });
 
   // ----- recording state, tray and overlay -----
@@ -580,6 +595,47 @@ function showWindow() {
   if (isMac) app.focus({ steal: true });
 }
 
+// ---------- side panel ----------
+// While recording, the window becomes a narrow panel on the right of the screen with
+// just the notes, so it can sit beside the call. "Open full view" (or stopping) puts the
+// window back where it was.
+const PANEL_WIDTH = 380;
+const FULL_MIN = [960, 620];
+
+async function setCompact(on) {
+  if (!win || win.isDestroyed()) return false;
+  if (on === !!compact) return on;
+  const animate = isMac;
+  if (on) {
+    if (win.isFullScreen()) {
+      await new Promise((r) => {
+        win.once('leave-full-screen', r);
+        win.setFullScreen(false);
+      });
+    }
+    if (win.isMaximized()) win.unmaximize();
+    compact = { full: win.getBounds(), pinned: false };
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    win.setMinimumSize(320, 420);
+    win.setBounds({ x: area.x + area.width - PANEL_WIDTH, y: area.y, width: PANEL_WIDTH, height: area.height }, animate);
+  } else {
+    const { full } = compact;
+    compact = null;
+    win.setAlwaysOnTop(false);
+    win.setMinimumSize(...FULL_MIN);
+    // Back to the old size, kept on a screen that still exists.
+    const area = screen.getDisplayMatching(full).workArea;
+    const width = Math.min(full.width, area.width);
+    const height = Math.min(full.height, area.height);
+    const x = Math.min(Math.max(full.x, area.x), area.x + area.width - width);
+    const y = Math.min(Math.max(full.y, area.y), area.y + area.height - height);
+    win.setBounds({ x, y, width, height }, animate);
+  }
+  if (!win.isVisible()) win.show();
+  refreshOverlay();
+  return on;
+}
+
 // ---------- tray, overlay, login item ----------
 const PROMPT_MS = 60_000; // an unanswered prompt goes away after a minute
 
@@ -604,7 +660,9 @@ function clearPrompt() {
 function refreshOverlay() {
   if (!overlay) return;
   if (prompt) return overlay.set({ ...prompt, rec });
-  const front = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  const visible = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
+  // The side panel shows its own timer, so the floating one is only needed without it.
+  const front = visible && (win.isFocused() || !!compact);
   const want = isActive(rec) && rec.state !== 'stopping' && store.settings().showRecordingIndicator !== false && !front;
   overlay.set(want ? { mode: 'recording', rec } : null);
 }

@@ -144,6 +144,8 @@ function createDemoBridge() {
     onToast: () => () => {},
     commands: { on: () => () => {} },
     rec: { report: () => {} },
+    window: { setCompact: async (on) => on, pin: async (on) => on },
+    notesReady: () => {},
     overlay: { get: async () => demoOverlay(), onState: () => () => {}, act: () => {} },
     system: {
       permissions: async () => ({ platform: 'demo', mic: 'granted', screen: 'granted' }),

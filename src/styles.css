@@ -296,3 +296,30 @@ html.overlay-page #root { width: 100vw; height: 100vh; }
 .ov-stop svg { width: 12px; height: 12px; }
 .ov button:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) { .ov { animation: none; } }
+
+/* ---------- side panel while recording ---------- */
+.app.compact { display: flex; flex-direction: column; }
+.app.compact .main.panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.panel-head { padding: 10px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.panel-bar { display: flex; align-items: center; gap: 2px; min-height: 30px; }
+.platform-darwin .panel-bar { padding-left: 64px; } /* room for the window buttons */
+.panel-brand { flex: 1; font-weight: 600; }
+.panel-head .title-input { font-size: 18px; }
+.panel-rec .recorder { width: 100%; }
+.recorder.compact { gap: 8px; }
+.recorder.compact .meter { flex: 1; min-width: 0; }
+.recorder.compact .meter-track { width: auto; flex: 1; min-width: 28px; }
+.recorder.compact .btn.stop { margin-left: auto; }
+.panel-notes { flex: 1; min-height: 0; padding: 16px; font-size: 14.5px; overflow-y: auto; }
+.panel-caption { display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-top: 1px solid var(--line); }
+.panel-caption span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app.compact .toasts { left: 12px; right: 12px; }
+
+/* ---------- writing-notes indicator ---------- */
+.spinner { display: inline-block; flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--red); animation: spin 0.8s linear infinite; }
+.spinner.small { width: 11px; height: 11px; border-width: 1.5px; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.enhance-status { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-sunk); }
+.enhance-status > div { display: flex; flex-direction: column; line-height: 1.35; }
+.enhance-status b { font-size: 13.5px; }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
