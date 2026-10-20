@@ -3,6 +3,7 @@ import { api, isDemo } from '../lib/bridge.js';
 import { BUILT_IN_TEMPLATES } from '../../shared/templates.js';
 import { errMsg, uid } from '../lib/util.js';
 import Icon from './Icon.jsx';
+import { listMics } from '../audio/recorder.js';
 
 const MODELS = [
   ['claude-opus-5-5', 'Claude Opus 5.5 (best notes)'],
@@ -47,6 +48,14 @@ export default function Settings({ settings, onChange, toast, update }) {
           <label className="field">
             <span>Your name</span>
             <input {...field('myName')} placeholder="Used to label your side of the transcript" />
+          </label>
+          <label className="field">
+            <span>Appearance</span>
+            <select className="select" value={draft.theme || 'system'} onChange={(e) => save({ theme: e.target.value })}>
+              <option value="system">Match {api.platform === 'win32' ? 'Windows' : api.platform === 'darwin' ? 'macOS' : 'system'}</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
           </label>
         </section>
 
@@ -94,6 +103,7 @@ export default function Settings({ settings, onChange, toast, update }) {
 
         <section className="card">
           <h2>Transcription</h2>
+          <MicPicker settings={draft} save={save} />
           <div className="grid2">
             <label className="field">
               <span>Language</span>
@@ -470,5 +480,53 @@ function Templates({ custom, onSave }) {
         </div>
       )}
     </section>
+  );
+}
+
+// Which microphone records your side of the call. Names are only available once
+// Trailmix has microphone permission, so offer to ask for it.
+function MicPicker({ settings, save }) {
+  const [mics, setMics] = useState(null);
+  useEffect(() => {
+    const load = () => listMics().then(setMics);
+    load();
+    navigator.mediaDevices?.addEventListener('devicechange', load);
+    return () => navigator.mediaDevices?.removeEventListener('devicechange', load);
+  }, []);
+  if (!mics) return null;
+  const named = mics.some((m) => m.label);
+  const chosen = settings.micDeviceId || '';
+  const missing = chosen && !mics.some((m) => m.id === chosen || (settings.micLabel && m.label === settings.micLabel));
+  return (
+    <label className="field">
+      <span>Microphone</span>
+      {named ? (
+        <select
+          className="select"
+          value={missing ? '__missing' : mics.find((m) => m.id === chosen)?.id || mics.find((m) => m.label === settings.micLabel)?.id || ''}
+          onChange={(e) => {
+            const m = mics.find((x) => x.id === e.target.value);
+            save({ micDeviceId: m?.id || '', micLabel: m?.label || '' });
+          }}
+        >
+          <option value="">System default</option>
+          {mics.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+          {missing && <option value="__missing">{settings.micLabel || 'Chosen microphone'} (not connected)</option>}
+        </select>
+      ) : (
+        <button className="btn" onClick={() => api.system.askMic().then(() => listMics().then(setMics))}>
+          Allow microphone access to choose a mic
+        </button>
+      )}
+      <small className="muted">
+        {missing
+          ? "That microphone isn't plugged in, so recordings use the system default until it's back."
+          : "Used for your voice. Other people are captured from your computer's sound, whichever mic you pick."}
+      </small>
+    </label>
   );
 }

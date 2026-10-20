@@ -325,7 +325,7 @@ function useRecording({ toast, settings, onFinished, refreshList }) {
       try {
         const perms = await api.system.permissions();
         if (perms.mic !== 'granted') await api.system.askMic();
-        const info = await r.start();
+        const info = await r.start({ mic: { deviceId: settings?.micDeviceId, label: settings?.micLabel } });
         recorder.current = r;
         await api.transcribe.start({ meetingId, sampleRate: info.sampleRate });
         ready.current = true;
@@ -337,7 +337,7 @@ function useRecording({ toast, settings, onFinished, refreshList }) {
         toast(errMsg(e));
       }
     },
-    [settings?.hasDeepgramKey, stop, toast],
+    [settings?.hasDeepgramKey, settings?.micDeviceId, settings?.micLabel, stop, toast],
   );
 
   const pause = useCallback(() => {

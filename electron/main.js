@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, session, desktopCapturer, systemPreferences, safeStorage, dialog, clipboard, shell, Menu, Notification, nativeTheme } from 'electron';
 import { marked } from 'marked';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -94,7 +94,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 620,
     title: 'Trailmix',
-    backgroundColor: '#ffffff',
+    backgroundColor: windowBackground(),
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     show: false,
@@ -272,6 +272,7 @@ function registerIpc() {
     if ('detectMeetings' in patch || 'detectAnyApp' in patch) setupMeetingDetection();
     if ('openAtLogin' in patch) applyLoginItem();
     if ('showRecordingIndicator' in patch) refreshOverlay();
+    if ('theme' in patch) applyTheme();
     return withApp(out);
   });
 
@@ -718,6 +719,17 @@ async function stopLive() {
   send('transcribe:event', { type: 'status', meetingId, state: 'stopped' });
 }
 
+// Light, dark or follow the system. Electron passes this to the pages as
+// prefers-color-scheme, so the CSS (and the floating window) follow automatically.
+const windowBackground = () => (nativeTheme.shouldUseDarkColors ? '#18191c' : '#ffffff');
+function applyTheme() {
+  const t = store.settings().theme;
+  nativeTheme.themeSource = ['light', 'dark'].includes(t) ? t : 'system';
+}
+nativeTheme.on('updated', () => {
+  if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground());
+});
+
 // CI smoke test: start the packaged app, report what came up, quit.
 function smokeReport() {
   setTimeout(() => {
@@ -744,6 +756,7 @@ if (process.platform === 'win32') app.setAppUserModelId('com.cgtechnologies.trai
 
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'), safeStorage);
+  step('theme', applyTheme);
   setupDisplayMedia();
   updater = setupUpdater({
     send: (ch, st) => {
