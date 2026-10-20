@@ -203,8 +203,11 @@ export class Store {
   patch(id, fields) {
     const m = this.get(id);
     const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat'];
-    for (const k of allowed) if (k in fields) m[k] = fields[k];
-    m.updatedAt = Date.now();
+    const changed = allowed.filter((k) => k in fields && JSON.stringify(fields[k]) !== JSON.stringify(m[k]));
+    for (const k of changed) m[k] = fields[k];
+    // Record when each field changed: sync uses these times to pick the newest version of
+    // a field when two devices' copies differ.
+    touch(m, changed);
     this.scheduleFlush(id);
     return m;
   }
