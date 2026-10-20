@@ -765,7 +765,7 @@ function setupMeetingDetection() {
   const stopMic = watchMicrophone(
     (apps) => {
       // Log what the OS reports (app names only), to make detection easy to check.
-      const seen = apps.map((a) => a.bundleId || a.exe).join(', ');
+      const seen = apps.map((a) => (a.bundleId || a.exe) + (a.via ? ` (via ${a.via})` : '')).join(', ');
       if (seen !== last) logLine(`[detect] using the mic: ${seen || 'nothing'}`);
       last = seen;
       current = apps;
