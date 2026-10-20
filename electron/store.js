@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS = {
   detectMeetings: true, // offer to take notes when a meeting app uses the microphone
   detectAnyApp: false, // ...or any app at all
   openAtLogin: true, // start in the menu bar / tray when the user logs in (installed app only)
+  compactWhileRecording: true, // shrink to a notes side panel while recording
   showRecordingIndicator: true, // floating timer + stop button while recording in another app
   trayHintShown: false, // Windows: told the user that closing the window keeps Trailmix in the tray
   micDeviceId: '', // microphone to record from; '' = the system default

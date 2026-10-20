@@ -14,7 +14,7 @@ function Meter({ label, value }) {
   );
 }
 
-export default function RecorderControls({ isThis, rec, levels, elapsed, onStart, onStop, onPause, onResume }) {
+export default function RecorderControls({ isThis, rec, levels, elapsed, onStart, onStop, onPause, onResume, compact = false }) {
   if (!isThis || rec.state === 'idle') {
     const busy = rec.state !== 'idle';
     return (
@@ -28,7 +28,7 @@ export default function RecorderControls({ isThis, rec, levels, elapsed, onStart
   }
   const paused = rec.state === 'paused';
   return (
-    <div className={`recorder ${paused ? 'paused' : ''}`}>
+    <div className={`recorder ${paused ? 'paused' : ''} ${compact ? 'compact' : ''}`}>
       <span className={`rec-dot ${paused ? 'static' : ''}`} />
       <span className="rec-time">{fmtClock(elapsed)}</span>
       {rec.conn === 'reconnecting' && <span className="chip warn tiny">Reconnecting…</span>}
