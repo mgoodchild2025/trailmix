@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActionSheetIOS,
   Alert,
+  Linking,
   Platform,
   Pressable,
   SectionList,
@@ -36,6 +37,8 @@ import { useRecording } from "../lib/recording.jsx";
 import { formatTime, durationOf } from "../../../shared/transcript.js";
 import { useTheme, type } from "../lib/theme.js";
 import { Button, Glass, PressableScale, Symbol } from "../components/ui.jsx";
+import { BottomBar, HeaderIcons } from "../components/AndroidBars.jsx";
+import { checkForAndroidUpdate } from "../lib/updates.js";
 
 function useSession() {
   const [s, set] = useState(getSession());
@@ -75,7 +78,7 @@ function SignIn() {
         { backgroundColor: t.bg, paddingBottom: insets.bottom + 16 },
       ]}
     >
-      <Stack.Screen options={{ title: "", headerLargeTitleEnabled: false }} />
+      <Stack.Screen options={{ title: "", headerLargeTitleEnabled: false, ...(Platform.OS === "android" ? { headerShown: false } : {}) }} />
       <View style={s.signinHero}>
         <View style={[s.appIcon, { backgroundColor: t.red }]}>
           <View style={s.appIconDot} />
@@ -332,6 +335,10 @@ function MeetingList({ demo }) {
   const [sync, setSync] = useState(null);
   useEffect(() => subscribeMeetings(() => setMeetings(listMeetings())), []);
   useEffect(() => subscribeSync(setSync), []);
+  const [update, setUpdate] = useState(null); // Android: a newer build to download
+  useEffect(() => {
+    checkForAndroidUpdate().then(setUpdate);
+  }, []);
 
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -369,13 +376,32 @@ function MeetingList({ demo }) {
         options={{
           title: "Meetings",
           headerLargeTitleEnabled: true,
+          headerShown: true, // the sign-in screen (same route) hides it on Android
           headerSearchBarOptions: {
             placeholder: "Search notes",
             onChangeText: (e) => setQuery(e.nativeEvent.text),
             hideWhenScrolling: true,
+            // Android: the search icon and text otherwise stay dark in dark mode.
+            headerIconColor: t.label,
+            textColor: t.label,
+            hintTextColor: t.label3,
           },
         }}
       />
+      {Platform.OS === "android" ? (
+        <>
+          <Stack.Screen
+            options={{
+              headerRight: () => (
+                <HeaderIcons
+                  items={[{ icon: "gearshape", label: "Settings", onPress: () => router.push("/settings") }]}
+                />
+              ),
+            }}
+          />
+        </>
+      ) : null}
+      {Platform.OS === "ios" ? (
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
           icon="gearshape"
@@ -383,6 +409,8 @@ function MeetingList({ demo }) {
           accessibilityLabel="Settings"
         />
       </Stack.Toolbar>
+      ) : null}
+      {Platform.OS === "ios" ? (
       <Stack.Toolbar>
         <Stack.Toolbar.Button
           icon="square.and.pencil"
@@ -402,6 +430,7 @@ function MeetingList({ demo }) {
           {live ? "Back to recording" : "Record"}
         </Stack.Toolbar.Button>
       </Stack.Toolbar>
+      ) : null}
 
       <SectionList
         sections={sections}
@@ -415,7 +444,18 @@ function MeetingList({ demo }) {
         }}
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
-          demo || sync?.error ? (
+          update ? (
+            <PressableScale
+              onPress={() => Linking.openURL(update.url)}
+              accessibilityLabel={`Download Trailmix ${update.version}`}
+              style={[s.notice, { backgroundColor: t.cell }]}
+            >
+              <Symbol name="arrow.up.circle.fill" size={18} color={t.red} />
+              <Text style={[type.footnote, { color: t.label, flex: 1 }]}>
+                Trailmix {update.version} is available. Tap to download, then open it to install.
+              </Text>
+            </PressableScale>
+          ) : demo || sync?.error ? (
             <View style={[s.notice, { backgroundColor: t.cell }]}>
               <Symbol
                 name={demo ? "theatermasks" : "exclamationmark.icloud"}
@@ -513,6 +553,17 @@ function MeetingList({ demo }) {
             </Glass>
           </PressableScale>
         </Animated.View>
+      ) : null}
+      {/* Android: drawn after the list so it sits on top of it. */}
+      {Platform.OS === "android" ? (
+        <BottomBar
+          actions={[{ icon: "square.and.pencil", label: "New note", onPress: () => newMeeting(false), disabled: live }]}
+          primary={{
+            title: live ? "Back to recording" : "Record",
+            icon: live ? null : "record.circle",
+            onPress: () => (live ? router.push(`/meeting/${rec.meetingId}`) : newMeeting(true)),
+          }}
+        />
       ) : null}
     </>
   );

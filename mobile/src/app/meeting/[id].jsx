@@ -15,6 +15,7 @@ import { enhance, ask } from '../../lib/ai.js';
 import { useRecording } from '../../lib/recording.jsx';
 import { useTheme, type } from '../../lib/theme.js';
 import { PressableScale, Symbol } from '../../components/ui.jsx';
+import { BottomBar, HeaderIcons, useMenu } from '../../components/AndroidBars.jsx';
 import { RecorderPanel } from '../../components/Recorder.jsx';
 import { NotesMarkdown } from '../../components/Notes.jsx';
 
@@ -28,6 +29,7 @@ const plain = (md) => (md || '').replace(/<\/?mark>/g, '');
 
 export default function MeetingScreen() {
   const { id } = useLocalSearchParams();
+  const [menuSheet, openMenu] = useMenu(); // Android "More" menu
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const recording = useRecording();
@@ -140,6 +142,44 @@ export default function MeetingScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ title: '' }} />
+      {Platform.OS === 'android' ? (
+        <>
+          <Stack.Screen
+            options={{
+              headerRight: () => (
+                <HeaderIcons
+                  items={[
+                    { icon: 'square.and.arrow.up', label: 'Share notes', onPress: share },
+                    {
+                      icon: 'ellipsis',
+                      label: 'More',
+                      onPress: () =>
+                        openMenu({
+                          items: [
+                            { heading: true, label: 'Write AI notes with' },
+                            ...BUILT_IN_TEMPLATES.map((tpl) => ({
+                              label: tpl.name,
+                              subtitle: tpl.description,
+                              icon: 'sparkles',
+                              checked: tpl.id === currentTpl,
+                              disabled: !canEnhance,
+                              onPress: () => runEnhance(tpl.id),
+                            })),
+                            { heading: true, label: 'Meeting' },
+                            { label: 'Copy notes', icon: 'doc.on.doc', disabled: !(m.enhanced || m.notes), onPress: () => Clipboard.setStringAsync(plain(m.enhanced || m.notes)) },
+                            { label: 'Delete meeting', icon: 'trash', destructive: true, onPress: del },
+                          ],
+                        }),
+                    },
+                  ]}
+                />
+              ),
+            }}
+          />
+          {menuSheet}
+        </>
+      ) : null}
+      {Platform.OS === 'ios' ? (
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon="square.and.arrow.up" onPress={share} accessibilityLabel="Share notes" />
         <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="More">
@@ -152,8 +192,9 @@ export default function MeetingScreen() {
           <Stack.Toolbar.MenuAction icon="trash" destructive onPress={del}>Delete meeting</Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
+      ) : null}
 
-      {!isLive && tab !== 'ask' ? (
+      {Platform.OS === 'ios' && !isLive && tab !== 'ask' ? (
         <Stack.Toolbar>
           {streaming != null ? (
             <Stack.Toolbar.Button icon="stop.circle" onPress={() => abort.current?.abort()} accessibilityLabel="Stop writing notes" />
@@ -224,6 +265,21 @@ export default function MeetingScreen() {
         <Animated.View entering={FadeIn.duration(200)} style={s.recorderWrap}>
           <RecorderPanel onStop={stopAndEnhance} bottomInset={insets.bottom} />
         </Animated.View>
+      ) : null}
+      {Platform.OS === 'android' && !isLive && tab !== 'ask' ? (
+        <BottomBar
+          actions={[
+            streaming != null
+              ? { icon: 'stop.circle', label: 'Stop writing notes', onPress: () => abort.current?.abort() }
+              : { icon: 'sparkles', label: m.enhanced ? 'Rewrite AI notes' : 'Write AI notes', onPress: () => runEnhance(currentTpl), disabled: !canEnhance },
+          ]}
+          primary={{
+            title: busyElsewhere ? 'Recording elsewhere' : m.transcript.length ? 'Continue recording' : 'Record',
+            icon: 'record.circle',
+            disabled: busyElsewhere || streaming != null,
+            onPress: startRec,
+          }}
+        />
       ) : null}
     </KeyboardAvoidingView>
   );

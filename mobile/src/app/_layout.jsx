@@ -41,12 +41,23 @@ export default function RootLayout() {
               headerShadowVisible: false,
               headerBackButtonDisplayMode: 'minimal',
               headerTransparent: Platform.OS === 'ios',
+              ...(Platform.OS === 'android' ? { headerStyle: { backgroundColor: t.grouped } } : {}),
               contentStyle: { backgroundColor: t.grouped },
             }}
           >
             <Stack.Screen name="index" options={{ title: 'Meetings', headerLargeTitleEnabled: true }} />
-            <Stack.Screen name="meeting/[id]" options={{ title: '', contentStyle: { backgroundColor: t.bg } }} />
-            <Stack.Screen name="settings" options={{ title: 'Settings', presentation: 'formSheet', sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }} />
+            <Stack.Screen
+              name="meeting/[id]"
+              options={{ title: '', contentStyle: { backgroundColor: t.bg }, ...(Platform.OS === 'android' ? { headerStyle: { backgroundColor: t.bg } } : {}) }}
+            />
+            <Stack.Screen
+              name="settings"
+              options={
+                Platform.OS === 'ios'
+                  ? { title: 'Settings', presentation: 'formSheet', sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }
+                  : { title: 'Settings' }
+              }
+            />
           </Stack>
         </RecordingProvider>
       </SafeAreaProvider>
