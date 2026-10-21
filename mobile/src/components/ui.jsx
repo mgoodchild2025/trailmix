@@ -6,9 +6,51 @@ import { BlurView } from 'expo-blur';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useTheme, type } from '../lib/theme.js';
 
-// SF Symbol on iOS; nothing (or a fallback) where symbols don't exist.
+// The Material Symbol shown on Android for each SF Symbol the app uses.
+const MATERIAL = {
+  sparkles: 'auto_awesome',
+  magnifyingglass: 'search',
+  waveform: 'graphic_eq',
+  'play.fill': 'play_arrow',
+  'pause.fill': 'pause',
+  'checkmark.circle.fill': 'check_circle',
+  'exclamationmark.circle.fill': 'error',
+  theatermasks: 'theater_comedy',
+  'exclamationmark.icloud': 'cloud_off',
+  trash: 'delete',
+  'trash.fill': 'delete',
+  'text.quote': 'format_quote',
+  laptopcomputer: 'laptop',
+  'laptopcomputer.and.iphone': 'devices',
+  'chevron.right': 'chevron_right',
+  'bubble.left.and.text.bubble.right': 'forum',
+  'arrow.up.circle.fill': 'arrow_circle_up',
+  'stop.circle': 'stop_circle',
+  'stop.fill': 'stop',
+  'square.and.pencil': 'edit_square',
+  'square.and.arrow.up': 'share',
+  gearshape: 'settings',
+  ellipsis: 'more_vert',
+  'doc.on.doc': 'content_copy',
+  'arrow.triangle.2.circlepath': 'sync',
+  checkmark: 'check',
+  'record.circle': 'fiber_manual_record',
+  mic: 'mic',
+};
+
+// SF Symbol on iOS, the matching Material Symbol on Android.
 export function Symbol({ name, size = 20, color, weight = 'regular', fallback = null, style }) {
-  return <SymbolView name={name} size={size} tintColor={color} weight={weight} fallback={fallback} style={[{ width: size, height: size }, style]} />;
+  const glyph = Platform.OS === 'android' ? { android: MATERIAL[name] } : name;
+  return (
+    <SymbolView
+      name={glyph}
+      size={size}
+      tintColor={color}
+      weight={Platform.OS === 'android' ? undefined : weight}
+      fallback={fallback}
+      style={[{ width: size, height: size }, style]}
+    />
+  );
 }
 
 // Feedback on touch-down: 3% scale in 120ms (it's touched often, so it stays subtle).

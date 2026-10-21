@@ -19,6 +19,7 @@
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.3",
+    "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
     "punycode": "^2.3.1",
     "react": "19.2.3",
@@ -39,5 +40,9 @@
     "test": "node --experimental-detect-module --test test/",
     "lint": "expo lint"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2"
+  }
 }

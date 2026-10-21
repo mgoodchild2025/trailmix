@@ -24,7 +24,8 @@
       "package": "com.cgtechnologies.trailmix",
       "permissions": [
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -48,7 +49,8 @@
           }
         }
       ],
-      "./plugins/with-scene-lifecycle.js"
+      "./plugins/with-scene-lifecycle.js",
+      "./plugins/with-android-signing.js"
     ],
     "scheme": "trailmix",
     "experiments": {
