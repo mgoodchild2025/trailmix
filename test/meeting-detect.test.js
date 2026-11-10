@@ -77,7 +77,8 @@ test('stays quiet while Trailmix is already recording, and for unknown apps by d
   d.update(zoom, 6000);
   d.update([{ bundleId: 'com.example.voicememo' }], 7000);
   d.update([{ bundleId: 'com.example.voicememo' }], 20000);
-  assert.deepEqual(events, []);
+  // No prompts (Zoom leaving mid-recording is a separate "call ended?" offer).
+  assert.deepEqual(events.filter((e) => e[0] === 'prompt'), []);
   const any = run({ anyApp: true });
   any.d.update([{ bundleId: 'com.example.voicememo', name: 'Voice thing' }], 0);
   any.d.update([{ bundleId: 'com.example.voicememo', name: 'Voice thing' }], 6000);
@@ -143,4 +144,53 @@ test('the consent store parser reports when each app started using the mic', () 
   const apps = parseWindowsConsentStore(out);
   assert.equal(apps.length, 1);
   assert.equal(apps[0].session, BigInt('0x1dc4f00aa000000').toString());
+});
+
+test("Siri and dictation are never a call, even with 'any app' on", () => {
+  const { d, events } = run({ anyApp: true });
+  const siri = [{ bundleId: 'com.apple.CoreSpeech', pid: 9 }];
+  d.update(siri, 0);
+  d.update(siri, 5000);
+  assert.deepEqual(events, []);
+});
+
+test('a manual recording still offers to stop when the call app leaves', () => {
+  const { d, events, setRecording } = run();
+  setRecording(true); // pressed Record without a prompt
+  d.update(zoom, 0);
+  d.update(zoom, 4000);
+  d.update([], 5000);
+  d.update([], 13000);
+  assert.deepEqual(events, [['ended', 'Zoom']]);
+});
+
+test('the call ends when the meeting app leaves, not when another app does', () => {
+  const teams = { bundleId: 'com.microsoft.teams2.modulehost', pid: 3 };
+  const other = { bundleId: 'com.example.recorder', name: 'Recorder', pid: 4 };
+  const { d, events, setRecording } = run({ anyApp: true });
+  d.update([other], 0);
+  d.update([other], 3000); // prompt for the other app, which the user accepts
+  d.follow('com.example.recorder', 'Recorder');
+  setRecording(true);
+  d.update([other, teams], 3500); // Teams joins the call
+  d.update([other], 10000); // Teams hangs up; the other app keeps the mic
+  d.update([other], 19000);
+  assert.deepEqual(events, [['prompt', 'Recorder']]);
+  d.update([], 20000);
+  d.update([], 28000);
+  assert.deepEqual(events, [['prompt', 'Recorder'], ['ended', 'Recorder']]);
+});
+
+test('the stop offer comes once per call, and again if a new call starts', () => {
+  const { d, events, setRecording } = run();
+  setRecording(true);
+  d.update(zoom, 0);
+  d.update([], 1000);
+  d.update([], 9000);
+  d.update([], 20000);
+  assert.deepEqual(events, [['ended', 'Zoom']]);
+  d.update(zoom, 30000);
+  d.update([], 31000);
+  d.update([], 39000);
+  assert.equal(events.filter((e) => e[0] === 'ended').length, 2);
 });

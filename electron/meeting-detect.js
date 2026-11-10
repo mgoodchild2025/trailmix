@@ -19,10 +19,14 @@ export const MEETING_APPS = [
 
 const OWN = ['com.cgtechnologies.trailmix', 'com.github.electron', 'trailmix.exe', 'electron.exe'];
 
+// Operating-system speech services that open the mic on their own ("Hey Siri",
+// dictation, Voice Control). Never a call, even with "any app" on.
+const SYSTEM = ['com.apple.corespeech', 'com.apple.siri', 'com.apple.assistantd', 'com.apple.speech', 'com.apple.dictation', 'com.apple.speechrecognitioncore', 'com.apple.voicecontrol'];
+
 // One reported app → { key, label, known } (key is stable across reports for that app).
 export function classify(app, platform) {
   const id = (platform === 'darwin' ? app.bundleId : app.exe || app.id || '').toLowerCase();
-  if (!id || OWN.some((o) => id.startsWith(o))) return null;
+  if (!id || OWN.some((o) => id.startsWith(o)) || SYSTEM.some((o) => id.startsWith(o))) return null;
   for (const m of MEETING_APPS) {
     const list = platform === 'darwin' ? m.mac : m.win;
     const hit = list.find((p) => id.startsWith(p) || id === p);
@@ -77,7 +81,8 @@ export function parseWindowsConsentStore(text) {
 /**
  * Feed it snapshots (`update(apps, now)`); it calls back:
  *   onPrompt({ key, label })     a meeting app has held the mic for `settleMs` → offer notes
- *   onEnded({ key, label })      the app a detection-started recording came from let go
+ *   onEnded({ key, label })      while recording, every meeting app seen during it has let
+ *                                go of the mic for `endMs` → offer to stop (once per call)
  * Options: { platform, anyApp, settleMs, graceMs, endMs, isRecording() }
  * Call update() regularly (not only when the app list changes): the timers only advance
  * when it runs.
@@ -86,7 +91,8 @@ export class MeetingDetector {
   constructor({ platform, anyApp = false, settleMs = 2500, graceMs = 3000, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {} }) {
     Object.assign(this, { platform, anyApp, settleMs, graceMs, endMs, isRecording, onPrompt, onEnded });
     this.seen = new Map(); // key -> { label, since, prompted, goneAt }
-    this.following = null; // { key, label, goneSince } for a recording we started from a prompt
+    this.call = null; // while recording: { apps: Map(key -> label), goneSince, offered }
+    this.pending = new Map(); // apps to follow once the recording a prompt started is running
   }
 
   update(rawApps, now = Date.now()) {
@@ -117,23 +123,48 @@ export class MeetingDetector {
         if (!this.isRecording()) this.onPrompt({ key, label: c.label });
       }
     }
-    if (this.following) {
-      if (present.has(this.following.key)) this.following.goneSince = null;
-      else if (!this.following.goneSince) this.following.goneSince = now;
-      else if (now - this.following.goneSince >= this.endMs) {
-        const f = this.following;
-        this.following = null;
-        if (this.isRecording()) this.onEnded({ key: f.key, label: f.label });
-      }
+    this.trackCall(present, now);
+  }
+
+  // While recording (however it started), follow every meeting app that uses the mic
+  // during it, plus the app whose prompt started it. When they've all let go for endMs,
+  // offer to stop. A call app joining after you pressed record is followed too.
+  trackCall(present, now) {
+    if (!this.isRecording()) {
+      this.call = null;
+      return;
+    }
+    if (!this.call) {
+      this.call = { apps: new Map(this.pending), goneSince: null, offered: false };
+      this.pending.clear();
+    }
+    const call = this.call;
+    for (const [key, c] of present) if (c.known || call.apps.has(key)) call.apps.set(key, c.label);
+    if (!call.apps.size) return;
+    const live = [...call.apps.keys()].filter((k) => present.has(k));
+    if (live.length) {
+      // Back on the call (or a new one started): it can end again.
+      call.goneSince = null;
+      call.offered = false;
+      call.last = live[0];
+      return;
+    }
+    call.goneSince ??= now;
+    if (!call.offered && now - call.goneSince >= this.endMs) {
+      call.offered = true;
+      const key = call.last ?? [...call.apps.keys()].at(-1);
+      this.onEnded({ key, label: call.apps.get(key) });
     }
   }
 
-  // The user accepted a prompt: watch for that app letting go of the mic.
+  // The user accepted a prompt: follow that app once the recording is running.
   follow(key, label) {
-    this.following = { key, label, goneSince: null };
+    if (this.call) this.call.apps.set(key, label);
+    else this.pending.set(key, label);
   }
 
   stopFollowing() {
-    this.following = null;
+    this.call = null;
+    this.pending.clear();
   }
 }
