@@ -8,8 +8,9 @@ export const isDemo = !window.trailmix;
 
 // `npm run web` with #overlay=prompt|ended|recording previews the floating window.
 function demoOverlay() {
-  const mode = new URLSearchParams(location.hash.slice(1)).get('overlay') || 'prompt';
-  return { mode, label: 'Teams', rec: { state: 'live', title: 'Northfield Dental — quarterly review', accumMs: 754000, resumedAt: Date.now() } };
+  const asked = new URLSearchParams(location.hash.slice(1)).get('overlay') || 'prompt';
+  const mode = asked === 'ending' ? 'ended' : asked;
+  return { mode, label: 'Teams', stopAt: asked === 'ending' ? Date.now() + 15000 : undefined, rec: { state: 'live', title: 'Northfield Dental — quarterly review', accumMs: 754000, resumedAt: Date.now() } };
 }
 
 function createDemoBridge() {

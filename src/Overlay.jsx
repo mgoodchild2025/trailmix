@@ -24,7 +24,7 @@ export default function Overlay() {
     return api.overlay.onState(setView);
   }, []);
 
-  const live = view?.rec?.state === 'live';
+  const live = view?.rec?.state === 'live' || !!view?.stopAt;
   useEffect(() => {
     if (!live) return;
     const t = setInterval(() => tick((n) => n + 1), 500);
@@ -59,9 +59,24 @@ export default function Overlay() {
       <span className="brand-mark ov-mark" aria-hidden="true" />
       <div className="ov-text">
         <b>{ended ? `${view.label} call ended` : 'Meeting detected'}</b>
-        <span title={view.label}>{ended ? `Recording · ${time}` : `${view.label} is using your mic`}</span>
+        <span title={view.label}>
+          {ended
+            ? view.stopAt
+              ? `Stopping in ${Math.max(0, Math.ceil((view.stopAt - Date.now()) / 1000))} s`
+              : `Recording · ${time}`
+            : `${view.label} is using your mic`}
+        </span>
       </div>
-      {ended ? (
+      {ended && view.stopAt ? (
+        <>
+          <button className="btn primary small no-drag" onClick={act('stop')}>
+            Stop now
+          </button>
+          <button className="btn small no-drag" onClick={act('dismiss')}>
+            Keep recording
+          </button>
+        </>
+      ) : ended ? (
         <button className="btn primary small no-drag" onClick={act('stop')}>
           Stop &amp; write notes
         </button>
@@ -70,9 +85,9 @@ export default function Overlay() {
           <span className="rec-dot static on-red" /> Start recording
         </button>
       )}
-      <button className="icon-btn ov-close no-drag" onClick={act('dismiss')} aria-label={ended ? 'Keep recording' : 'Not now'} title={ended ? 'Keep recording' : 'Not now'}>
+      {!(ended && view.stopAt) && <button className="icon-btn ov-close no-drag" onClick={act('dismiss')} aria-label={ended ? 'Keep recording' : 'Not now'} title={ended ? 'Keep recording' : 'Not now'}>
         <Icon name="close" />
-      </button>
+      </button>}
     </div>
   );
 }
