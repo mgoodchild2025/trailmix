@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS = {
   coreUrl: CORE_DEFAULT_URL,
   detectMeetings: true, // offer to take notes when a meeting app uses the microphone
   detectAnyApp: false, // ...or any app at all
+  autoStopOnCallEnd: true, // when the call app lets go of the mic: stop after a countdown (false: just ask)
   openAtLogin: true, // start in the menu bar / tray when the user logs in (installed app only)
   compactWhileRecording: true, // shrink to a notes side panel while recording
   showRecordingIndicator: true, // floating timer + stop button while recording in another app

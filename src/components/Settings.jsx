@@ -180,7 +180,7 @@ export default function Settings({ settings, onChange, toast, update }) {
           <h2>Meeting detection</h2>
           <p className="muted small">
             When Teams, Zoom, Webex, Slack, Google Meet or another call app starts using your microphone, Trailmix asks whether to take notes. It never starts
-            recording on its own, and it offers to stop when the call app lets go of the microphone.
+            recording on its own. When the call app lets go of the microphone, it stops the recording after a 15-second countdown you can cancel, or just asks.
           </p>
           <label className="check">
             <input type="checkbox" checked={draft.detectMeetings !== false} onChange={(e) => save({ detectMeetings: e.target.checked })} />
@@ -189,6 +189,13 @@ export default function Settings({ settings, onChange, toast, update }) {
           <label className="check">
             <input type="checkbox" checked={!!draft.detectAnyApp} disabled={draft.detectMeetings === false} onChange={(e) => save({ detectAnyApp: e.target.checked })} />
             Ask for any app that uses the microphone, not just meeting apps
+          </label>
+          <label className="field">
+            <span>When a call ends</span>
+            <select className="select" value={draft.autoStopOnCallEnd === false ? 'ask' : 'auto'} onChange={(e) => save({ autoStopOnCallEnd: e.target.value === 'auto' })}>
+              <option value="auto">Stop recording automatically (after a 15-second countdown)</option>
+              <option value="ask">Ask me</option>
+            </select>
           </label>
         </section>
 

@@ -5,7 +5,7 @@ import { BrowserWindow, screen } from 'electron';
 
 const SIZES = {
   prompt: { width: 400, height: 76 },
-  ended: { width: 400, height: 76 },
+  ended: { width: 440, height: 76 },
   recording: { width: 214, height: 44 },
 };
 const MARGIN = 14;

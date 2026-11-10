@@ -57,7 +57,7 @@ export function createTray({ isMac, assetsDir, onCommand, onOpen, dev = false })
       { type: 'separator' },
       { label: 'Open Trailmix', click: () => onOpen() },
       { label: 'Settings…', click: cmd('settings') },
-      ...(dev ? [{ type: 'separator' }, { label: 'Test meeting pop-up (dev)', click: cmd('test-prompt') }] : []),
+      ...(dev ? [{ type: 'separator' }, { label: 'Test meeting pop-up (dev)', click: cmd('test-prompt') }, { label: 'Test call ended (dev)', click: cmd('test-ended') }] : []),
       ...(update?.state === 'ready' && !recording ? [{ type: 'separator' }, { label: `Restart to update to ${update.next}`, click: cmd('install-update') }] : []),
       { type: 'separator' },
       { label: 'Quit Trailmix', role: 'quit' },

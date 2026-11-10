@@ -194,3 +194,18 @@ test('the stop offer comes once per call, and again if a new call starts', () =>
   d.update([], 39000);
   assert.equal(events.filter((e) => e[0] === 'ended').length, 2);
 });
+
+test('a call that comes back after the end offer is reported, so a countdown can be cancelled', () => {
+  const events = [];
+  const d = new MeetingDetector({
+    platform: 'darwin',
+    isRecording: () => true,
+    onEnded: (e) => events.push(['ended', e.label]),
+    onResumed: (e) => events.push(['resumed', e.label]),
+  });
+  d.update(zoom, 0);
+  d.update([], 1000);
+  d.update([], 9000);
+  d.update(zoom, 12000); // reconnected
+  assert.deepEqual(events, [['ended', 'Zoom'], ['resumed', 'Zoom']]);
+});

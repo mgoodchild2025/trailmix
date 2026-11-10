@@ -652,10 +652,35 @@ async function setCompact(on) {
 
 // ---------- tray, overlay, login item ----------
 const PROMPT_MS = 60_000; // an unanswered prompt goes away after a minute
+const AUTO_STOP_MS = 15_000; // "call ended" countdown before stopping by itself
+let autoStopTimer = null;
+
+// The call app let go of the mic while recording. Stop after a countdown the user can
+// cancel (or, with auto-stop off, just ask).
+function callEnded({ key, label }) {
+  if (store.settings().autoStopOnCallEnd === false) return showPrompt({ mode: 'ended', key, label });
+  showPrompt({ mode: 'ended', key, label, stopAt: Date.now() + AUTO_STOP_MS });
+  autoStopTimer = setTimeout(() => {
+    if (prompt?.mode !== 'ended' || !live) return;
+    logLine(`[detect] stopping: ${label} call ended`);
+    clearPrompt();
+    command({ cmd: 'stop' });
+    refreshOverlay();
+  }, AUTO_STOP_MS);
+}
+
+// The call came back during the countdown (a reconnect): keep recording.
+function callResumed({ label }) {
+  if (prompt?.mode !== 'ended') return;
+  logLine(`[detect] ${label} is back on the call; keep recording`);
+  clearPrompt();
+  refreshOverlay();
+}
 
 function showPrompt(p) {
   logLine(`[detect] ${p.mode}: ${p.label}`);
   clearTimeout(promptTimer);
+  clearTimeout(autoStopTimer);
   prompt = p;
   promptTimer = setTimeout(() => {
     prompt = null;
@@ -666,6 +691,7 @@ function showPrompt(p) {
 
 function clearPrompt() {
   clearTimeout(promptTimer);
+  clearTimeout(autoStopTimer);
   prompt = null;
 }
 
@@ -711,6 +737,7 @@ function overlayAction({ type }) {
 function trayCommand(cmd) {
   if (cmd === 'install-update') return updater.install();
   if (cmd === 'test-prompt') return showPrompt({ mode: 'prompt', key: 'Teams', label: 'Teams' });
+  if (cmd === 'test-ended') return callEnded({ key: 'Teams', label: 'Teams' });
   if (['start', 'new', 'open', 'settings'].includes(cmd)) showWindow();
   command({ cmd, meetingId: rec.meetingId });
 }
@@ -758,7 +785,8 @@ function setupMeetingDetection() {
     anyApp: !!s.detectAnyApp,
     isRecording: () => !!live,
     onPrompt: ({ key, label }) => showPrompt({ mode: 'prompt', key, label }),
-    onEnded: ({ key, label }) => showPrompt({ mode: 'ended', key, label }),
+    onEnded: callEnded,
+    onResumed: callResumed,
   });
   let last = '';
   let current = [];

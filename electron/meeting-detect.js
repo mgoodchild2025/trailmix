@@ -83,13 +83,14 @@ export function parseWindowsConsentStore(text) {
  *   onPrompt({ key, label })     a meeting app has held the mic for `settleMs` → offer notes
  *   onEnded({ key, label })      while recording, every meeting app seen during it has let
  *                                go of the mic for `endMs` → offer to stop (once per call)
+ *   onResumed({ key, label })    after onEnded, the call came back (a reconnect) → cancel
  * Options: { platform, anyApp, settleMs, graceMs, endMs, isRecording() }
  * Call update() regularly (not only when the app list changes): the timers only advance
  * when it runs.
  */
 export class MeetingDetector {
-  constructor({ platform, anyApp = false, settleMs = 2500, graceMs = 3000, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {} }) {
-    Object.assign(this, { platform, anyApp, settleMs, graceMs, endMs, isRecording, onPrompt, onEnded });
+  constructor({ platform, anyApp = false, settleMs = 2500, graceMs = 3000, endMs = 8000, isRecording = () => false, onPrompt = () => {}, onEnded = () => {}, onResumed = () => {} }) {
+    Object.assign(this, { platform, anyApp, settleMs, graceMs, endMs, isRecording, onPrompt, onEnded, onResumed });
     this.seen = new Map(); // key -> { label, since, prompted, goneAt }
     this.call = null; // while recording: { apps: Map(key -> label), goneSince, offered }
     this.pending = new Map(); // apps to follow once the recording a prompt started is running
@@ -144,6 +145,7 @@ export class MeetingDetector {
     const live = [...call.apps.keys()].filter((k) => present.has(k));
     if (live.length) {
       // Back on the call (or a new one started): it can end again.
+      if (call.offered) this.onResumed({ key: live[0], label: call.apps.get(live[0]) });
       call.goneSince = null;
       call.offered = false;
       call.last = live[0];
