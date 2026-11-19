@@ -35,6 +35,7 @@ import {
 import { meetingChanged, meetingDeleted, subscribeSync } from "../lib/sync.js";
 import { useRecording } from "../lib/recording.jsx";
 import { formatTime, durationOf } from "../../../shared/transcript.js";
+import { fmtTime } from "../lib/clock.js";
 import { useTheme, type } from "../lib/theme.js";
 import { Button, Glass, PressableScale, Symbol } from "../components/ui.jsx";
 import { BottomBar, HeaderIcons } from "../components/AndroidBars.jsx";
@@ -239,10 +240,7 @@ function MeetingRow({ m, first, last, live }) {
   const [pressed, setPressed] = useState(false);
   const duration = durationOf(m.transcript || []);
   const meta = [
-    new Date(m.createdAt).toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
+    fmtTime(m.createdAt),
     duration > 0 ? formatTime(duration) : null,
   ]
     .filter(Boolean)

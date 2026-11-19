@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('trailmix', {
     askMic: invoke('system:askMic'),
     openPrivacy: invoke('system:openPrivacy'),
     openDataFolder: invoke('system:openDataFolder'),
+    // true when the system shows a 12-hour clock.
+    hour12: () => ipcRenderer.sendSync('system:hour12'),
   },
   transcribe: {
     start: invoke('transcribe:start'),

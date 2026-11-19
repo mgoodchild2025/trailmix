@@ -15,6 +15,7 @@
     "expo-haptics": "~57.0.3",
     "expo-keep-awake": "~57.0.2",
     "expo-linking": "~57.0.13",
+    "expo-localization": "~57.0.2",
     "expo-router": "~57.0.27",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
