@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, isDemo } from '../lib/bridge.js';
 import { BUILT_IN_TEMPLATES } from '../../shared/templates.js';
-import { errMsg, uid } from '../lib/util.js';
+import { errMsg, fmtTime, uid } from '../lib/util.js';
 import Icon from './Icon.jsx';
 import { listMics } from '../audio/recorder.js';
 
@@ -379,7 +379,7 @@ function SyncLine({ available }) {
   if (!available) return <p className="muted small">Meeting sync between your devices isn't available on this CG Core yet.</p>;
   const ago = (ts) => {
     const m = Math.round((Date.now() - ts) / 60000);
-    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : fmtTime(ts);
   };
   return (
     <div className="row gap-s wrap small sync-line">

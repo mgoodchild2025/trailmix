@@ -17,6 +17,7 @@ import { watchMicrophone, helperPath } from './micwatch.js';
 import { Overlay } from './overlay.js';
 import { createTray, isActive } from './tray.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from '../shared/core.js';
+import { hour12ForLocale, hour12FromPattern } from '../shared/clock.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const here = import.meta.dirname;
@@ -262,9 +263,37 @@ async function aiStream({ purpose, system, messages, effort, maxTokens, signal, 
   return streamClaude({ apiKey: store.secrets().anthropicKey, model: s.claudeModel, system, messages, effort, maxTokens, onDelta, signal });
 }
 
+// ---------- System clock ----------
+// Whether the system shows a 12-hour clock: macOS's 24-hour time switch, Windows'
+// short time format, else the region's default. Read again at most every 30 s.
+let clockCache = { at: 0, hour12: false };
+function systemHour12() {
+  if (Date.now() - clockCache.at < 30_000) return clockCache.hour12;
+  let hour12 = null;
+  try {
+    if (isMac) {
+      if (systemPreferences.getUserDefault('AppleICUForce24HourTime', 'boolean')) hour12 = false;
+      else if (systemPreferences.getUserDefault('AppleICUForce12HourTime', 'boolean')) hour12 = true;
+    } else if (process.platform === 'win32') {
+      const out = execFileSync('reg', ['query', 'HKCU\\Control Panel\\International', '/v', 'sShortTime'], { encoding: 'utf8', timeout: 2000, windowsHide: true });
+      hour12 = hour12FromPattern(/sShortTime\s+REG_SZ\s+(.+)/.exec(out)?.[1]?.trim());
+    }
+  } catch {
+    // Fall back to the region's default.
+  }
+  if (hour12 === null) hour12 = hour12ForLocale(app.getSystemLocale());
+  clockCache = { at: Date.now(), hour12 };
+  return hour12;
+}
+
 // ---------- IPC ----------
 function registerIpc() {
   const handle = (ch, fn) => ipcMain.handle(ch, (_e, ...args) => fn(...args));
+
+  // Synchronous: the renderer formats times as it draws.
+  ipcMain.on('system:hour12', (e) => {
+    e.returnValue = systemHour12();
+  });
 
   const withApp = (s) => ({ ...s, canOpenAtLogin: canOpenAtLogin() });
   handle('settings:get', () => withApp(store.settings()));

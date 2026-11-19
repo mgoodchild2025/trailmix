@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { getSession, refreshSession, signOut, subscribeSession } from '../lib/session.js';
 import { subscribeSync, syncNow } from '../lib/sync.js';
 import { useTheme, type } from '../lib/theme.js';
+import { fmtTime } from '../lib/clock.js';
 import { SectionHeader, Symbol } from '../components/ui.jsx';
 
 function Row({ icon, iconColor, title, detail, onPress, destructive, last, right }) {
@@ -42,7 +43,7 @@ export default function Settings() {
   const initials = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   const staging = !session.demo && session.url?.includes('staging');
   const ok = (on) => <Symbol name={on ? 'checkmark.circle.fill' : 'exclamationmark.circle.fill'} size={20} color={on ? t.green : t.orange} />;
-  const syncDetail = session.demo ? 'Off in demo' : !f.sync ? 'Not available yet' : sync?.syncing ? 'Syncing…' : sync?.error ? 'Problem' : sync?.lastSyncAt ? new Date(sync.lastSyncAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'Waiting';
+  const syncDetail = session.demo ? 'Off in demo' : !f.sync ? 'Not available yet' : sync?.syncing ? 'Syncing…' : sync?.error ? 'Problem' : sync?.lastSyncAt ? fmtTime(sync.lastSyncAt) : 'Waiting';
 
   return (
     <ScrollView style={{ backgroundColor: t.grouped }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} contentInsetAdjustmentBehavior="automatic">

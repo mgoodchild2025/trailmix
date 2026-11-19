@@ -14,6 +14,7 @@ import { getSession } from '../../lib/session.js';
 import { enhance, ask } from '../../lib/ai.js';
 import { useRecording } from '../../lib/recording.jsx';
 import { useTheme, type } from '../../lib/theme.js';
+import { clockOptions } from '../../lib/clock.js';
 import { PressableScale, Symbol } from '../../components/ui.jsx';
 import { BottomBar, HeaderIcons, useMenu } from '../../components/AndroidBars.jsx';
 import { RecorderPanel } from '../../components/Recorder.jsx';
@@ -228,7 +229,7 @@ export default function MeetingScreen() {
             accessibilityLabel="Meeting title"
           />
           <Text style={[type.subhead, { color: t.label2, marginTop: 4 }]}>
-            {new Date(m.createdAt).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+            {new Date(m.createdAt).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', ...clockOptions() })}
             {duration > 0 ? ` · ${formatTime(duration)}` : ''}
           </Text>
           <SegmentedControl

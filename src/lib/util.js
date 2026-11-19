@@ -1,3 +1,5 @@
+import { clockTime, hour12ForLocale, timeOptions } from '../../shared/clock.js';
+
 // Electron prefixes errors thrown in ipcMain.handle; show users just the message.
 export const errMsg = (e) =>
   String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -17,8 +19,27 @@ export function dayGroup(ts) {
   return String(d.getFullYear());
 }
 
+// The system's clock (12- or 24-hour), asked once and again when the window comes back
+// (the setting may have changed meanwhile). Outside Electron: the browser's default.
+let hour12 = null;
+export function systemHour12() {
+  if (hour12 === null) {
+    try {
+      hour12 = window.trailmix?.system?.hour12?.();
+    } catch {
+      hour12 = null;
+    }
+    if (typeof hour12 !== 'boolean') hour12 = hour12ForLocale();
+  }
+  return hour12;
+}
+if (typeof window !== 'undefined') window.addEventListener('focus', () => { hour12 = null; });
+
+/** A time of day in the system's format: "15:05" or "3:05 pm". */
+export const fmtTime = (ts) => clockTime(ts, systemHour12());
+
 export const fmtDate = (ts) =>
-  new Date(ts).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  new Date(ts).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...timeOptions(systemHour12()) });
 
 export const fmtClock = (ms) => {
   const s = Math.floor(ms / 1000);

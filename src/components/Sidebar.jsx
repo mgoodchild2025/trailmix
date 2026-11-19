@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import Icon from './Icon.jsx';
-import { dayGroup } from '../lib/util.js';
+import { dayGroup, fmtTime } from '../lib/util.js';
 import { api } from '../lib/bridge.js';
 
 export default function Sidebar({ meetings, selectedId, view, query, onQuery, matches, onSelect, onNew, onAsk, onSettings, rec, enhancingId }) {
@@ -58,7 +58,7 @@ export default function Sidebar({ meetings, selectedId, view, query, onQuery, ma
                     {m.title || 'Untitled meeting'}
                   </span>
                   <span className="meeting-meta">
-                    {new Date(m.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    {fmtTime(m.createdAt)}
                     {m.hasEnhanced && <span className="chip tiny">Enhanced</span>}
                   </span>
                 </button>
