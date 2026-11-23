@@ -95,7 +95,7 @@ function createDemoBridge() {
   const summary = (m) => ({
     id: m.id, title: m.title, createdAt: m.createdAt, updatedAt: m.updatedAt,
     hasEnhanced: !!m.enhanced, segments: m.transcript.length,
-    filed: m.filed ? { type: m.filed.type, id: m.filed.id, name: m.filed.name } : null,
+    filed: m.filed ? { type: m.filed.type, id: m.filed.id, name: m.filed.name, activityId: m.filed.activityId } : null,
     preview: (m.enhanced || m.notes).replace(/<\/?mark>|[#*\-\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140),
   });
   const streamText = async (requestId, text) => {
@@ -225,6 +225,18 @@ function createDemoBridge() {
       },
       onStatus: (cb) => (coreListeners.add(cb), () => coreListeners.delete(cb)),
     },
+    history: (() => {
+      const longNotes = '## Summary\n- Backups at Leeds fixed after the firewall rule change\n- **Teams Phone** quote sent; decision expected in January\n\n## Actions\n- [ ] Tom to send the serial numbers for the two new iPads\n- [ ] Matt to book the restore test\n\n' + 'Transcript:\nMatt: Thanks for making time. '.repeat(3);
+      const entries = [
+        { id: 'h1', type: 'meeting', subject: 'Northfield Dental — Q3 service review', notes: longNotes, truncated: false, occurredAt: new Date(now - 3 * 864e5).toISOString(), by: 'Matt Goodchild', contact: 'Dr Priya Shah', fromTrailmix: true, mine: true },
+        { id: 'h2', type: 'call', subject: 'Backup failure follow-up', notes: 'Called Tom: NAS job still failing since 3 Oct. Booked a site visit.', truncated: false, occurredAt: new Date(now - 30 * 864e5).toISOString(), by: 'Alex Morgan', contact: 'Tom Reed', fromTrailmix: false, mine: false },
+        { id: 'h3', type: 'site_visit', subject: 'Leeds practice: firewall and NAS', notes: 'Replaced the firewall rule blocking the NAS; ran a manual backup.', truncated: false, occurredAt: new Date(now - 26 * 864e5).toISOString(), by: 'Sam Lee', contact: null, fromTrailmix: false, mine: false },
+      ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      return {
+        get: async ({ type, id }) => ({ target: { type, id, name: 'Northfield Dental', detail: 'Client', path: '/', url: 'https://core.cgtechnologies.com/' }, entries, nextBefore: null }),
+        entry: async ({ activityId }) => entries.find((e) => e.id === activityId),
+      };
+    })(),
     filing: (() => {
       const targets = [
         { type: 'company', id: 'c-northfield', name: 'Northfield Dental', detail: 'Client' },

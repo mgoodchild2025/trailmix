@@ -1,43 +1,23 @@
 // "File to client": puts a meeting's notes (and, if asked, its transcript) on a client's,
 // prospect's or lead's timeline in CG Core. Filing again updates that same entry.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/bridge.js';
 import { errMsg } from '../lib/util.js';
 import Icon from './Icon.jsx';
+import ClientSearch from './ClientSearch.jsx';
 
-export default function FileDialog({ meeting, initialTarget = null, onClose, toast }) {
+export default function FileDialog({ meeting, initialTarget = null, onClose, toast, onOpenHistory }) {
   const filed = meeting.filed;
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState(null);
   const [target, setTarget] = useState(initialTarget || (filed ? { type: filed.type, id: filed.id, name: filed.name } : null));
   const [contacts, setContacts] = useState(null);
   const [contactId, setContactId] = useState('');
   const [includeTranscript, setIncludeTranscript] = useState(!!filed?.includeTranscript);
   const [busy, setBusy] = useState(false);
-  const input = useRef(null);
-
-  useEffect(() => input.current?.focus(), []);
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && !busy && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
-
-  // Search as you type (CG Core needs 2+ characters).
-  useEffect(() => {
-    if (query.trim().length < 2) return setResults(null);
-    let alive = true;
-    const t = setTimeout(() => {
-      api.filing
-        .search(query)
-        .then((r) => alive && setResults(r))
-        .catch((e) => alive && (setResults([]), toast(errMsg(e))));
-    }, 200);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [query, toast]);
 
   // A client or prospect can have the contact the meeting was with; a lead can't.
   useEffect(() => {
@@ -97,6 +77,14 @@ export default function FileDialog({ meeting, initialTarget = null, onClose, toa
             <button className="link small" onClick={() => api.filing.open(filed.url)}>
               Open in CG Core
             </button>
+            {onOpenHistory && (
+              <>
+                {' · '}
+                <button className="link small" onClick={() => (onClose(), onOpenHistory({ type: filed.type, id: filed.id, name: filed.name }))}>
+                  Client history
+                </button>
+              </>
+            )}
           </p>
         )}
 
@@ -111,26 +99,7 @@ export default function FileDialog({ meeting, initialTarget = null, onClose, toa
             </button>
           </div>
         ) : (
-          <>
-            <label className="search">
-              <Icon name="search" />
-              <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, prospects and leads" />
-            </label>
-            <div className="file-results" role="listbox">
-              {results === null ? (
-                <p className="muted small pad">Type at least two letters of the name.</p>
-              ) : results.length === 0 ? (
-                <p className="muted small pad">No clients, prospects or leads match.</p>
-              ) : (
-                results.map((r) => (
-                  <button key={`${r.type}:${r.id}`} className="file-result" role="option" aria-selected="false" onClick={() => setTarget(r)}>
-                    <span>{r.name}</span>
-                    <span className="muted small">{r.detail}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </>
+          <ClientSearch onPick={setTarget} toast={toast} />
         )}
 
         {target?.type === 'company' && contacts?.length > 0 && (

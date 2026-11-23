@@ -32,3 +32,21 @@ test('library context prefers enhanced notes and respects the budget', () => {
   assert.match(ctx, /1 older meeting\(s\) omitted/);
   assert.doesNotMatch(ctx, /<transcript>/);
 });
+
+test('client context lists everyone\'s entries with who, when and with whom, newest kept first when long', async () => {
+  const { clientContext } = await import('../shared/prompts.js');
+  const target = { name: 'Northfield Dental', detail: 'Client' };
+  const entries = [
+    { type: 'meeting', subject: 'Q3 "review"', notes: 'Backups fixed', truncated: false, occurredAt: '2026-11-20T15:00:00Z', by: 'Matt', contact: 'Jo Smith' },
+    { type: 'call', subject: 'Follow-up', notes: 'x'.repeat(500), truncated: true, occurredAt: '2026-10-01T15:00:00Z', by: 'Alex', contact: null },
+  ];
+  const all = clientContext(target, entries);
+  assert.match(all, /<client name="Northfield Dental" kind="Client">/);
+  assert.match(all, /title="Q3 'review'"/);
+  assert.match(all, /by="Matt" with="Jo Smith">\nBackups fixed/);
+  assert.match(all, /\(cut for length\)/);
+  const short = clientContext(target, entries, 300);
+  assert.match(short, /Backups fixed/);
+  assert.match(short, /1 older entry omitted for length/);
+  assert.match(clientContext(target, []), /No meetings, calls or visits on record yet/);
+});

@@ -178,7 +178,7 @@ export class Store {
         updatedAt: m.updatedAt,
         hasEnhanced: !!m.enhanced,
         segments: m.transcript.length,
-        filed: m.filed ? { type: m.filed.type, id: m.filed.id, name: m.filed.name } : null,
+        filed: m.filed ? { type: m.filed.type, id: m.filed.id, name: m.filed.name, activityId: m.filed.activityId } : null,
         preview: (m.enhanced || m.notes || m.transcript.map((s) => s.text).join(' '))
           .replace(/<\/?mark>/g, '')
           .replace(/[#*>\-\[\]]/g, ' ')

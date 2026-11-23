@@ -88,3 +88,26 @@ export function libraryContext(meetings, myName, budgetChars = 600_000) {
   if (omitted) out.push(`(${omitted} older meeting(s) omitted for length.)`);
   return out.join('\n\n');
 }
+
+// A client's, prospect's or lead's history from CG Core (everyone's meetings, calls and
+// site visits the person may see), as material for "Ask about this client".
+export function clientContext(target, entries, budgetChars = 400_000) {
+  const esc = (s) => String(s || '').replace(/"/g, "'");
+  const out = [`<client name="${esc(target.name)}" kind="${esc(target.detail)}">`];
+  let used = 0;
+  let omitted = 0;
+  for (const e of entries) {
+    const date = new Date(e.occurredAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    const block = `<entry type="${e.type}" title="${esc(e.subject)}" date="${date}" by="${esc(e.by)}"${e.contact ? ` with="${esc(e.contact)}"` : ''}>\n${e.notes || '(no notes)'}${e.truncated ? '\n(cut for length)' : ''}\n</entry>`;
+    if (used + block.length > budgetChars) {
+      omitted++;
+      continue;
+    }
+    out.push(block);
+    used += block.length;
+  }
+  if (!entries.length) out.push('(No meetings, calls or visits on record yet.)');
+  if (omitted) out.push(`(${omitted} older entr${omitted === 1 ? 'y' : 'ies'} omitted for length.)`);
+  out.push('</client>');
+  return out.join('\n\n');
+}
