@@ -62,6 +62,10 @@ contextBridge.exposeInMainWorld('trailmix', {
     signout: invoke('core:signout'),
     onStatus: (cb) => on('core:status', cb),
   },
+  history: {
+    get: invoke('history:get'),
+    entry: invoke('history:entry'),
+  },
   filing: {
     search: invoke('filing:search'),
     contacts: invoke('filing:contacts'),

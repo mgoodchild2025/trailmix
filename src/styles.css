@@ -349,3 +349,22 @@ html.overlay-page #root { width: 100vw; height: 100vh; }
 .file-suggest { display: flex; align-items: center; gap: 10px; margin: 10px 28px 0; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-sunk); }
 .file-suggest > span { flex: 1; }
 .client-filter { margin-top: 4px; width: 100%; }
+
+/* ---------- Client history ---------- */
+.client-history { display: flex; flex-direction: column; min-height: 0; }
+.history-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.history-pick { max-width: 560px; padding: 8px 28px; }
+.history-body { flex: 1; min-height: 0; display: flex; }
+.history-list { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 28px 40px; display: flex; flex-direction: column; gap: 8px; max-width: 860px; }
+.history-entry { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.history-entry.open { border-color: var(--line-2); box-shadow: var(--shadow); }
+.history-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px 14px; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--ink); border-radius: var(--radius); }
+.history-entry-head:hover { background: var(--bg-hover); }
+.history-entry-head .chip { margin-left: 8px; }
+.history-preview { margin: -4px 14px 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.history-notes { padding: 0 16px 14px; border-top: 1px solid var(--line); }
+.history-notes .prose { margin-top: 10px; }
+.page-head.history-head { flex-direction: row; align-items: flex-end; justify-content: space-between; }
+.history-ask { width: min(420px, 48%); flex: none; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+/* The meeting page's chat floats over the notes; here it's a column of its own. */
+.history-ask .chat { position: static; transform: none; width: auto; max-height: none; flex: 1; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }

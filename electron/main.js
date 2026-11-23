@@ -8,7 +8,7 @@ import { execFileSync, execFile } from 'node:child_process';
 import { Store } from './store.js';
 import { TranscriptionSession } from './deepgram.js';
 import { streamClaude } from './llm.js';
-import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext } from '../shared/prompts.js';
+import { ENHANCE_SYSTEM, enhanceUserMessage, CHAT_SYSTEM, meetingContext, libraryContext, clientContext } from '../shared/prompts.js';
 import { findTemplate } from '../shared/templates.js';
 import { setupUpdater } from './updater.js';
 import { setupSync } from './sync.js';
@@ -455,11 +455,13 @@ function registerIpc() {
     }
   });
 
-  handle('ai:chat', async ({ requestId, meetingId, messages }) => {
+  handle('ai:chat', async ({ requestId, meetingId, client, messages }) => {
     const s = store.settings();
-    const context = meetingId
-      ? meetingContext(store.get(meetingId), s.myName)
-      : libraryContext(store.all(), s.myName);
+    const context = client
+      ? await clientChatContext(client)
+      : meetingId
+        ? meetingContext(store.get(meetingId), s.myName)
+        : libraryContext(store.all(), s.myName);
     const ctrl = new AbortController();
     aborts.set(requestId, ctrl);
     try {
@@ -524,7 +526,15 @@ function registerIpc() {
     if (!core || !store.settings().core.features?.file) throw new Error('Filing meetings needs a CG Core sign-in with the Log activities permission.');
     return core;
   };
-  handle('filing:search', async (q) => (await filingCore().searchClients(String(q || ''))).results);
+  const historyCore = () => {
+    const core = coreClient();
+    const f = store.settings().core.features || {};
+    if (!core || !(f.history || f.file)) throw new Error("Client history needs a CG Core sign-in with the sales or Log activities permission.");
+    return core;
+  };
+  handle('filing:search', async (q) => (await historyCore().searchClients(String(q || ''))).results);
+  handle('history:get', ({ type, id, before }) => historyCore().clientHistory(type, id, before));
+  handle('history:entry', async ({ type, id, activityId }) => (await historyCore().clientHistoryEntry(type, id, activityId)).entry);
   handle('filing:contacts', async (companyId) => (await filingCore().companyContacts(companyId)).contacts);
   // The likely client for a meeting, from its title, or null.
   handle('filing:suggest', async (meetingId) => {
@@ -689,6 +699,21 @@ function audioCaptureStatus() {
       resolve(!err && ['granted', 'denied', 'not-determined'].includes(s) ? s : 'unknown');
     });
   });
+}
+
+// "Ask about this client": up to 200 of their history entries from CG Core, read once
+// per question (the list's notes, cut at 6,000 characters each, are plenty for questions).
+async function clientChatContext({ type, id }) {
+  const core = coreClient();
+  if (!core) throw new Error('Sign in to CG Core to ask about a client.');
+  let page = await core.clientHistory(type, id);
+  const target = page.target;
+  const entries = [...page.entries];
+  while (page.nextBefore && entries.length < 200) {
+    page = await core.clientHistory(type, id, page.nextBefore);
+    entries.push(...page.entries);
+  }
+  return clientContext(target, entries);
 }
 
 // ---------- side panel ----------

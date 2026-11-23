@@ -3,12 +3,16 @@ import Icon from './Icon.jsx';
 import { dayGroup, fmtTime } from '../lib/util.js';
 import { api } from '../lib/bridge.js';
 
-export default function Sidebar({ meetings, selectedId, view, query, onQuery, matches, onSelect, onNew, onAsk, onSettings, rec, enhancingId }) {
+export default function Sidebar({ meetings, selectedId, view, query, onQuery, matches, onSelect, onNew, onAsk, onSettings, rec, enhancingId, canHistory, onHistory }) {
   // Clients, prospects and leads this person has filed meetings to, for the filter.
   const [client, setClient] = useState('');
   const clients = useMemo(() => {
     const byKey = new Map();
-    for (const m of meetings) if (m.filed) byKey.set(`${m.filed.type}:${m.filed.id}`, { name: m.filed.name, count: (byKey.get(`${m.filed.type}:${m.filed.id}`)?.count || 0) + 1 });
+    for (const m of meetings) {
+      if (!m.filed) continue;
+      const key = `${m.filed.type}:${m.filed.id}`;
+      byKey.set(key, { name: m.filed.name, target: { type: m.filed.type, id: m.filed.id, name: m.filed.name }, count: (byKey.get(key)?.count || 0) + 1 });
+    }
     return [...byKey].map(([key, v]) => ({ key, ...v })).sort((a, b) => a.name.localeCompare(b.name));
   }, [meetings]);
   const clientOn = client && clients.some((c) => c.key === client) ? client : '';
@@ -41,6 +45,11 @@ export default function Sidebar({ meetings, selectedId, view, query, onQuery, ma
         <button className={`nav-item ${view === 'ask' ? 'active' : ''}`} onClick={onAsk}>
           <Icon name="sparkle" /> Ask across meetings
         </button>
+        {canHistory && (
+          <button className={`nav-item ${view === 'client' ? 'active' : ''}`} onClick={() => onHistory(clientOn ? clients.find((c) => c.key === clientOn)?.target ?? null : null)}>
+            <Icon name="folder" /> Client history
+          </button>
+        )}
         <label className="search">
           <Icon name="search" />
           <input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="Search notes and transcripts" />

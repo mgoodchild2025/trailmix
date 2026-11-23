@@ -137,6 +137,16 @@ export class CoreClient {
     return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}/file`, { method: 'DELETE' })).json();
   }
 
+  // A client's, prospect's or lead's meetings, calls and site visits (needs features.history).
+  async clientHistory(type, id, before = null) {
+    const q = before ? `?before=${encodeURIComponent(before)}` : '';
+    return (await this.request(`/api/trailmix/v1/clients/${type}/${encodeURIComponent(id)}/history${q}`)).json();
+  }
+
+  async clientHistoryEntry(type, id, activityId) {
+    return (await this.request(`/api/trailmix/v1/clients/${type}/${encodeURIComponent(id)}/history/${encodeURIComponent(activityId)}`)).json();
+  }
+
   async signout() {
     await this.request('/api/trailmix/v1/signout', { method: 'POST' });
   }

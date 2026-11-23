@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar.jsx';
 import MeetingView from './components/MeetingView.jsx';
 import Settings from './components/Settings.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
+import ClientHistory from './components/ClientHistory.jsx';
 import Icon from './components/Icon.jsx';
 
 const IDLE = { meetingId: null, state: 'idle' };
@@ -22,6 +23,7 @@ export default function App() {
   const [update, setUpdate] = useState(null);
   const [compact, setCompactState] = useState(false); // notes side panel while recording
   const [enhancingId, setEnhancingId] = useState(null);
+  const [client, setClient] = useState(null); // Client history: { type, id, name }
 
   const toast = useCallback((text, kind = 'error') => {
     const id = Math.random();
@@ -78,6 +80,11 @@ export default function App() {
       }),
     [refreshList],
   );
+
+  const openClient = (target) => {
+    setClient(target);
+    setView('client');
+  };
 
   const select = (id) => {
     setSelectedId(id);
@@ -171,6 +178,7 @@ export default function App() {
       compact={compact}
       onCompact={setCompact}
       onEnhancing={setEnhancingId}
+      onOpenHistory={openClient}
     />
   );
 
@@ -204,10 +212,21 @@ export default function App() {
         onSettings={() => setView('settings')}
         rec={rec.state}
         enhancingId={enhancingId}
+        canHistory={!!(settings.core?.features?.history || settings.core?.features?.file)}
+        onHistory={openClient}
       />
 
       {view === 'meeting' && selectedId ? (
         meetingView
+      ) : view === 'client' ? (
+        <ClientHistory
+          target={client}
+          onPick={setClient}
+          settings={settings}
+          toast={toast}
+          localByActivity={Object.fromEntries(meetings.filter((m) => m.filed?.activityId).map((m) => [m.filed.activityId, m.id]))}
+          onOpenMeeting={select}
+        />
       ) : view === 'settings' ? (
         <Settings settings={settings} onChange={setSettings} toast={toast} update={update} />
       ) : view === 'ask' ? (

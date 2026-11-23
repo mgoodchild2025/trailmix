@@ -10,7 +10,7 @@ import TranscriptPanel from './TranscriptPanel.jsx';
 import ChatPanel from './ChatPanel.jsx';
 import FileDialog from './FileDialog.jsx';
 
-export default function MeetingView({ id, settings, rec, levels, elapsed, interim, recorder, autoEnhance, clearAutoEnhance, refreshList, toast, onDeleted, openSettings, compact = false, onCompact = () => {}, onEnhancing = () => {} }) {
+export default function MeetingView({ id, settings, rec, levels, elapsed, interim, recorder, autoEnhance, clearAutoEnhance, refreshList, toast, onDeleted, openSettings, compact = false, onCompact = () => {}, onEnhancing = () => {}, onOpenHistory }) {
   const [meeting, setMeeting] = useState(null);
   const [tab, setTab] = useState('notes');
   const [showTranscript, setShowTranscript] = useState(false);
@@ -337,6 +337,7 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           meeting={meeting}
           initialTarget={fileDialog.initialTarget}
           toast={toast}
+          onOpenHistory={onOpenHistory}
           onClose={(r) => {
             setFileDialog(null);
             if (r !== undefined) setMeeting((m) => ({ ...m, filed: r }));
