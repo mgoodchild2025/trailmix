@@ -51,6 +51,16 @@ export default function RootLayout() {
               options={{ title: '', contentStyle: { backgroundColor: t.bg }, ...(Platform.OS === 'android' ? { headerStyle: { backgroundColor: t.bg } } : {}) }}
             />
             <Stack.Screen
+              name="file/[id]"
+              options={
+                Platform.OS === 'ios'
+                  ? { title: 'File to a client', presentation: 'formSheet', sheetAllowedDetents: [0.75, 1], sheetGrabberVisible: true }
+                  : { title: 'File to a client' }
+              }
+            />
+            <Stack.Screen name="clients" options={{ title: 'Client history' }} />
+            <Stack.Screen name="client/[type]/[id]" options={{ title: '' }} />
+            <Stack.Screen
               name="settings"
               options={
                 Platform.OS === 'ios'

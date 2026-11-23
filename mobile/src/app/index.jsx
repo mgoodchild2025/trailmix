@@ -40,6 +40,7 @@ import { useTheme, type } from "../lib/theme.js";
 import { Button, Glass, PressableScale, Symbol } from "../components/ui.jsx";
 import { BottomBar, HeaderIcons } from "../components/AndroidBars.jsx";
 import { checkForAndroidUpdate } from "../lib/updates.js";
+import { canReadHistory } from "../lib/filing.js";
 
 function useSession() {
   const [s, set] = useState(getSession());
@@ -392,7 +393,10 @@ function MeetingList({ demo }) {
             options={{
               headerRight: () => (
                 <HeaderIcons
-                  items={[{ icon: "gearshape", label: "Settings", onPress: () => router.push("/settings") }]}
+                  items={[
+                    ...(canReadHistory() ? [{ icon: "building.2", label: "Client history", onPress: () => router.push("/clients") }] : []),
+                    { icon: "gearshape", label: "Settings", onPress: () => router.push("/settings") },
+                  ]}
                 />
               ),
             }}
@@ -401,6 +405,9 @@ function MeetingList({ demo }) {
       ) : null}
       {Platform.OS === "ios" ? (
       <Stack.Toolbar placement="right">
+        {canReadHistory() ? (
+          <Stack.Toolbar.Button icon="building.2" onPress={() => router.push("/clients")} accessibilityLabel="Client history" />
+        ) : null}
         <Stack.Toolbar.Button
           icon="gearshape"
           onPress={() => router.push("/settings")}

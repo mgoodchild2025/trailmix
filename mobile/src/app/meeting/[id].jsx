@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
@@ -12,6 +12,7 @@ import { getMeeting, patchMeeting, removeMeeting, subscribeMeetings } from '../.
 import { meetingChanged, meetingDeleted } from '../../lib/sync.js';
 import { getSession } from '../../lib/session.js';
 import { enhance, ask } from '../../lib/ai.js';
+import { canFile, fileMeeting, suggestTarget } from '../../lib/filing.js';
 import { useRecording } from '../../lib/recording.jsx';
 import { useTheme, type } from '../../lib/theme.js';
 import { clockOptions } from '../../lib/clock.js';
@@ -41,6 +42,7 @@ export default function MeetingScreen() {
   const [m, setM] = useState(() => getMeeting(id));
   const [tab, setTab] = useState(() => (getMeeting(id)?.enhanced ? 'enhanced' : 'notes'));
   const [streaming, setStreaming] = useState(null);
+  const [suggest, setSuggest] = useState(null); // likely client to file the new notes to
   const pending = useRef({});
   const timer = useRef(null);
   const abort = useRef(null);
@@ -89,6 +91,8 @@ export default function MeetingScreen() {
         await enhance(id, templateId, { onDelta: (d) => setStreaming((x) => (x ?? '') + d), signal: abort.current.signal });
         setM(getMeeting(id));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Offer to file the fresh notes to the client the title names.
+        suggestTarget(id).then((s) => s && setSuggest(s)).catch(() => {});
       } catch (err) {
         if (!err.cancelled) Alert.alert("Couldn't write the notes", err.message);
       } finally {
@@ -110,6 +114,25 @@ export default function MeetingScreen() {
       setTab('notes');
     } catch (err) {
       Alert.alert("Couldn't start recording", err.message);
+    }
+  };
+
+  const openFile = (target) => {
+    flush();
+    router.push({ pathname: '/file/[id]', params: { id, ...(target ? { suggest: JSON.stringify(target) } : {}) } });
+  };
+
+  const fileSuggested = async () => {
+    const target = suggest;
+    setSuggest(null);
+    try {
+      flush();
+      const r = await fileMeeting(id, { target: { type: target.type, id: target.id } });
+      setM(getMeeting(id));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Filed in CG Core', `On ${r.name}'s timeline.`);
+    } catch (err) {
+      Alert.alert("Couldn't file the meeting", err.message);
     }
   };
 
@@ -167,6 +190,7 @@ export default function MeetingScreen() {
                               onPress: () => runEnhance(tpl.id),
                             })),
                             { heading: true, label: 'Meeting' },
+                            ...(canFile() ? [{ label: m.filed ? `Filed to ${m.filed.name}` : 'File to a client', icon: 'folder', onPress: () => openFile() }] : []),
                             { label: 'Copy notes', icon: 'doc.on.doc', disabled: !(m.enhanced || m.notes), onPress: () => Clipboard.setStringAsync(plain(m.enhanced || m.notes)) },
                             { label: 'Delete meeting', icon: 'trash', destructive: true, onPress: del },
                           ],
@@ -189,6 +213,9 @@ export default function MeetingScreen() {
               <Stack.Toolbar.MenuAction key={tpl.id} subtitle={tpl.description} isOn={tpl.id === currentTpl} onPress={() => runEnhance(tpl.id)}>{tpl.name}</Stack.Toolbar.MenuAction>
             ))}
           </Stack.Toolbar.Menu>
+          {canFile() ? (
+            <Stack.Toolbar.MenuAction icon="folder" onPress={() => openFile()}>{m.filed ? `Filed to ${m.filed.name}` : 'File to a client'}</Stack.Toolbar.MenuAction>
+          ) : null}
           <Stack.Toolbar.MenuAction icon="doc.on.doc" disabled={!(m.enhanced || m.notes)} onPress={() => Clipboard.setStringAsync(plain(m.enhanced || m.notes))}>Copy notes</Stack.Toolbar.MenuAction>
           <Stack.Toolbar.MenuAction icon="trash" destructive onPress={del}>Delete meeting</Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
@@ -232,6 +259,32 @@ export default function MeetingScreen() {
             {new Date(m.createdAt).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', ...clockOptions() })}
             {duration > 0 ? ` · ${formatTime(duration)}` : ''}
           </Text>
+          {m.filed ? (
+            <Pressable onPress={() => openFile()} style={({ pressed }) => [s.filedChip, { backgroundColor: t.fill }, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`Filed to ${m.filed.name}`}>
+              <Symbol name="folder" size={13} color={t.label2} />
+              <Text style={[type.footnote, { color: t.label2 }]} numberOfLines={1}>
+                {m.filed.name}
+              </Text>
+            </Pressable>
+          ) : null}
+          {suggest && !m.filed && streaming == null ? (
+            <View style={[s.suggest, { backgroundColor: t.grouped, borderColor: t.separator }]}>
+              <Text style={[type.subhead, { color: t.label }]}>
+                File these notes to <Text style={{ fontWeight: '600' }}>{suggest.name}</Text> in CG Core?
+              </Text>
+              <View style={s.suggestActions}>
+                <Pressable onPress={fileSuggested} style={({ pressed }) => [s.suggestBtn, { backgroundColor: t.red }, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+                  <Text style={[type.subhead, { color: t.onRed, fontWeight: '600' }]}>File</Text>
+                </Pressable>
+                <Pressable onPress={() => (openFile(suggest), setSuggest(null))} style={({ pressed }) => [s.suggestBtn, { backgroundColor: t.fill }, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+                  <Text style={[type.subhead, { color: t.label }]}>Choose…</Text>
+                </Pressable>
+                <Pressable onPress={() => setSuggest(null)} hitSlop={10} style={s.suggestClose} accessibilityRole="button" accessibilityLabel="Not now">
+                  <Symbol name="xmark" size={14} color={t.label2} />
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
           <SegmentedControl
             style={s.segmented}
             values={TABS.map(([, l]) => l)}
@@ -437,6 +490,11 @@ function AskBar({ id, m, onSave, bottomInset }) {
 }
 
 const s = StyleSheet.create({
+  filedChip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, minHeight: 28, borderRadius: 14, marginTop: 8, maxWidth: '100%' },
+  suggest: { borderRadius: 12, padding: 12, marginTop: 12, gap: 10, borderWidth: StyleSheet.hairlineWidth },
+  suggestActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  suggestBtn: { minHeight: 34, paddingHorizontal: 16, borderRadius: 17, justifyContent: 'center' },
+  suggestClose: { marginLeft: 'auto', padding: 6 },
   head: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 6 },
   segmented: { marginTop: 18, height: 32 },
   notes: { paddingHorizontal: 20, paddingTop: 14, minHeight: 320 },

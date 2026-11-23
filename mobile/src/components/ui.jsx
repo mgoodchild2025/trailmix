@@ -36,6 +36,10 @@ const MATERIAL = {
   checkmark: 'check',
   'record.circle': 'fiber_manual_record',
   mic: 'mic',
+  folder: 'folder',
+  'folder.fill': 'folder',
+  'building.2': 'apartment',
+  xmark: 'close',
 };
 
 // SF Symbol on iOS, the matching Material Symbol on Android.
