@@ -62,6 +62,14 @@ contextBridge.exposeInMainWorld('trailmix', {
     signout: invoke('core:signout'),
     onStatus: (cb) => on('core:status', cb),
   },
+  filing: {
+    search: invoke('filing:search'),
+    contacts: invoke('filing:contacts'),
+    suggest: invoke('filing:suggest'),
+    file: invoke('filing:file'),
+    unfile: invoke('filing:unfile'),
+    open: invoke('filing:open'),
+  },
   sync: {
     status: invoke('sync:status'),
     now: invoke('sync:now'),

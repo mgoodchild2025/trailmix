@@ -6,7 +6,8 @@
 // edit to the notes on the phone and to the title on the laptop both survive. The
 // transcript is merged by segment id, since two devices never record the same segment.
 
-export const SYNCED_FIELDS = ['title', 'notes', 'enhanced', 'templateId', 'chat', 'share'];
+// filed: where the meeting was filed in CG Core ({ type, id, name, activityId, url, at }).
+export const SYNCED_FIELDS = ['title', 'notes', 'enhanced', 'templateId', 'chat', 'share', 'filed'];
 
 // Fields that stay on the device and never go to Core.
 const LOCAL_ONLY = ['_sync'];

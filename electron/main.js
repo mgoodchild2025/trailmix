@@ -17,6 +17,7 @@ import { watchMicrophone, helperPath } from './micwatch.js';
 import { Overlay } from './overlay.js';
 import { createTray, isActive } from './tray.js';
 import { CoreClient, CORE_URLS, PROTOCOL, connectUrl, parseConnectLink, pair } from '../shared/core.js';
+import { filedRecord, pickSuggestion, suggestQueries } from '../shared/filing.js';
 import { hour12ForLocale, hour12FromPattern } from '../shared/clock.js';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -516,6 +517,58 @@ function registerIpc() {
   // ----- sync -----
   handle('sync:status', () => sync.status());
   handle('sync:now', () => sync.now());
+
+  // ----- filing a meeting to a client's, prospect's or lead's timeline in CG Core -----
+  const filingCore = () => {
+    const core = coreClient();
+    if (!core || !store.settings().core.features?.file) throw new Error('Filing meetings needs a CG Core sign-in with the Log activities permission.');
+    return core;
+  };
+  handle('filing:search', async (q) => (await filingCore().searchClients(String(q || ''))).results);
+  handle('filing:contacts', async (companyId) => (await filingCore().companyContacts(companyId)).contacts);
+  // The likely client for a meeting, from its title, or null.
+  handle('filing:suggest', async (meetingId) => {
+    const core = filingCore();
+    const m = store.get(meetingId);
+    if (m.filed) return null;
+    const found = [];
+    for (const q of suggestQueries(m.title)) found.push(...(await core.searchClients(q).catch(() => ({ results: [] }))).results);
+    return pickSuggestion(m.title, found);
+  });
+  // Core files its own synced copy, so sync this meeting first (and once more if Core
+  // says it hasn't arrived yet).
+  handle('filing:file', async ({ meetingId, target, contactId, includeTranscript }) => {
+    const core = filingCore();
+    store.flush(meetingId);
+    sync.changed(meetingId);
+    await sync.now();
+    let res;
+    try {
+      res = await core.fileMeeting(meetingId, { target, contactId, includeTranscript });
+    } catch (err) {
+      if (err.status !== 404 || !/synced/i.test(err.message)) throw err;
+      await sync.now();
+      res = await core.fileMeeting(meetingId, { target, contactId, includeTranscript });
+    }
+    const filed = filedRecord(res, includeTranscript);
+    store.patch(meetingId, { filed });
+    sync.changed(meetingId);
+    send('meetings:changed', { updated: meetingId });
+    return { ...filed, updated: !!res.updated };
+  });
+  handle('filing:unfile', async (meetingId) => {
+    await filingCore().unfileMeeting(meetingId);
+    store.patch(meetingId, { filed: null });
+    sync.changed(meetingId);
+    send('meetings:changed', { updated: meetingId });
+    return true;
+  });
+  handle('filing:open', (url) => {
+    const base = new URL(store.settings().coreUrl);
+    const u = new URL(url);
+    // Only ever opens a page on the CG Core this app is signed in to.
+    if (u.origin === base.origin) shell.openExternal(u.toString());
+  });
 
   // ----- updates -----
   handle('update:status', () => updater.status());

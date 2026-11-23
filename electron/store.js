@@ -178,6 +178,7 @@ export class Store {
         updatedAt: m.updatedAt,
         hasEnhanced: !!m.enhanced,
         segments: m.transcript.length,
+        filed: m.filed ? { type: m.filed.type, id: m.filed.id, name: m.filed.name } : null,
         preview: (m.enhanced || m.notes || m.transcript.map((s) => s.text).join(' '))
           .replace(/<\/?mark>/g, '')
           .replace(/[#*>\-\[\]]/g, ' ')
@@ -193,7 +194,7 @@ export class Store {
     if (!q) return null;
     return this.all()
       .filter((m) =>
-        [m.title, m.notes, m.enhanced, ...m.transcript.map((s) => s.text)]
+        [m.title, m.notes, m.enhanced, m.filed?.name, ...m.transcript.map((s) => s.text)]
           .join('\n')
           .toLowerCase()
           .includes(q),
@@ -203,7 +204,7 @@ export class Store {
 
   patch(id, fields) {
     const m = this.get(id);
-    const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat'];
+    const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat', 'filed'];
     const changed = allowed.filter((k) => k in fields && JSON.stringify(fields[k]) !== JSON.stringify(m[k]));
     for (const k of changed) m[k] = fields[k];
     // Record when each field changed: sync uses these times to pick the newest version of
