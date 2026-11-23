@@ -37,7 +37,7 @@ function createDemoBridge() {
       url: 'https://core.cgtechnologies.com',
       staff: { name: 'Matt Goodchild', email: 'matt@example.com' },
       device: { name: "Matt's MacBook Air" },
-      features: { claude: true, deepgram: true, sync: true },
+      features: { claude: true, deepgram: true, sync: true, file: true },
       config: { claudeModels: ['claude-opus-5-5', 'claude-sonnet-5-5'], defaultClaudeModel: 'claude-opus-5-5' },
     },
   };
@@ -95,6 +95,7 @@ function createDemoBridge() {
   const summary = (m) => ({
     id: m.id, title: m.title, createdAt: m.createdAt, updatedAt: m.updatedAt,
     hasEnhanced: !!m.enhanced, segments: m.transcript.length,
+    filed: m.filed ? { type: m.filed.type, id: m.filed.id, name: m.filed.name } : null,
     preview: (m.enhanced || m.notes).replace(/<\/?mark>|[#*\-\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140),
   });
   const streamText = async (requestId, text) => {
@@ -224,6 +225,33 @@ function createDemoBridge() {
       },
       onStatus: (cb) => (coreListeners.add(cb), () => coreListeners.delete(cb)),
     },
+    filing: (() => {
+      const targets = [
+        { type: 'company', id: 'c-northfield', name: 'Northfield Dental', detail: 'Client' },
+        { type: 'company', id: 'c-leeds', name: 'Northfield Dental Leeds', detail: 'Client' },
+        { type: 'company', id: 'c-acme', name: 'Acme Accounting (AA)', detail: 'Prospect' },
+        { type: 'lead', id: 'l-river', name: 'Riverside Physio', detail: 'Lead · Sam Patel' },
+      ];
+      const record = (t, includeTranscript) => ({ type: t.type, id: t.id, name: t.name, activityId: 'demo-activity', url: 'https://core.cgtechnologies.com/', at: Date.now(), includeTranscript });
+      return {
+        search: async (q) => targets.filter((t) => q.toLowerCase().split(/\s+/).every((w) => t.name.toLowerCase().includes(w))),
+        contacts: async (id) => (id === 'c-northfield' ? [{ id: 'p1', name: 'Dr Priya Shah', title: 'Practice owner' }, { id: 'p2', name: 'Tom Reed', title: 'Practice manager' }] : []),
+        suggest: async (id) => (meetings.get(id)?.title?.includes('Northfield') && !meetings.get(id).filed ? targets[0] : null),
+        file: async ({ meetingId, target, includeTranscript }) => {
+          const t = targets.find((x) => x.id === target.id);
+          const updated = !!meetings.get(meetingId).filed;
+          meetings.get(meetingId).filed = record(t, includeTranscript);
+          changeListeners.forEach((cb) => cb({ updated: meetingId }));
+          return { ...meetings.get(meetingId).filed, updated };
+        },
+        unfile: async (meetingId) => {
+          meetings.get(meetingId).filed = null;
+          changeListeners.forEach((cb) => cb({ updated: meetingId }));
+          return true;
+        },
+        open: async () => {},
+      };
+    })(),
     sync: {
       status: async () => ({ enabled: true, lastSyncAt: Date.now() - 120000, pending: 0 }),
       now: async () => {},

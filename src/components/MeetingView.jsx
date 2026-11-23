@@ -8,6 +8,7 @@ import Icon from './Icon.jsx';
 import RecorderControls from './RecorderControls.jsx';
 import TranscriptPanel from './TranscriptPanel.jsx';
 import ChatPanel from './ChatPanel.jsx';
+import FileDialog from './FileDialog.jsx';
 
 export default function MeetingView({ id, settings, rec, levels, elapsed, interim, recorder, autoEnhance, clearAutoEnhance, refreshList, toast, onDeleted, openSettings, compact = false, onCompact = () => {}, onEnhancing = () => {} }) {
   const [meeting, setMeeting] = useState(null);
@@ -18,6 +19,9 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
   const [editing, setEditing] = useState(false);
   const [templateId, setTemplateId] = useState(settings.defaultTemplateId);
   const [pinned, setPinned] = useState(false);
+  const [fileDialog, setFileDialog] = useState(null); // { initialTarget } while open
+  const [suggest, setSuggest] = useState(null); // likely client to file the new notes to
+  const canFile = !!settings.core?.features?.file;
   const saveTimer = useRef(null);
   const pendingPatch = useRef({});
 
@@ -66,7 +70,7 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           setMeeting((cur) => {
             if (!cur) return cur;
             const next = { ...cur };
-            for (const k of ['title', 'notes', 'enhanced', 'templateId', 'chat', 'transcript', 'share']) {
+            for (const k of ['title', 'notes', 'enhanced', 'templateId', 'chat', 'transcript', 'share', 'filed']) {
               if (!(k in pendingPatch.current)) next[k] = fresh[k];
             }
             return next;
@@ -113,6 +117,8 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
         setMeeting((m) => ({ ...m, ...fields }));
         refreshList();
         api.notesReady({ title: fields.title || meeting?.title });
+        // Offer to file the fresh notes to the client the title names.
+        if (canFile && !meeting?.filed) api.filing.suggest(id).then((t) => t && setSuggest(t)).catch(() => {});
       } catch (e) {
         if (!/Cancelled/.test(errMsg(e))) toast(errMsg(e));
         setTab((t) => (meeting?.enhanced ? t : 'notes'));
@@ -122,7 +128,7 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
         onEnhancing(null);
       }
     },
-    [id, templateId, settings.hasAnthropicKey, flush, refreshList, toast, openSettings, meeting?.enhanced, meeting?.title, onEnhancing],
+    [id, templateId, settings.hasAnthropicKey, flush, refreshList, toast, openSettings, meeting?.enhanced, meeting?.title, meeting?.filed, canFile, onEnhancing],
   );
 
   useEffect(() => {
@@ -221,6 +227,11 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           <div className="meta muted small">
             {fmtDate(meeting.createdAt)}
             {duration > 0 && <> · {formatTime(duration)}</>}
+            {meeting.filed && (
+              <button className="filed-chip no-drag" onClick={() => setFileDialog({})} title="Filed in CG Core">
+                <Icon name="folder" /> {meeting.filed.name}
+              </button>
+            )}
           </div>
         </div>
         <div className="meeting-head-right no-drag">
@@ -269,6 +280,11 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           <button className={`icon-btn ${showTranscript ? 'on' : ''}`} onClick={() => setShowTranscript((v) => !v)} title="Transcript">
             <Icon name="transcript" />
           </button>
+          {canFile && (
+            <button className={`icon-btn ${meeting.filed ? 'on' : ''}`} onClick={() => setFileDialog({})} title={meeting.filed ? `Filed to ${meeting.filed.name}` : 'File to a client in CG Core'} disabled={isLive}>
+              <Icon name="folder" />
+            </button>
+          )}
           <button className="icon-btn" onClick={copyNotes} title="Copy notes">
             <Icon name="copy" />
           </button>
@@ -284,6 +300,49 @@ export default function MeetingView({ id, settings, rec, levels, elapsed, interi
           </button>
         </div>
       </div>
+
+      {suggest && !meeting.filed && !streaming && (
+        <div className="file-suggest" role="status">
+          <Icon name="folder" />
+          <span>
+            File these notes to <b>{suggest.name}</b> <span className="muted small">({suggest.detail})</span> in CG Core?
+          </span>
+          <button
+            className="btn small primary"
+            onClick={async () => {
+              const t = suggest;
+              setSuggest(null);
+              try {
+                const r = await api.filing.file({ meetingId: id, target: { type: t.type, id: t.id }, includeTranscript: false });
+                setMeeting((m) => ({ ...m, filed: r }));
+                toast(`Filed to ${r.name}'s timeline.`, 'ok');
+              } catch (e) {
+                toast(errMsg(e));
+              }
+            }}
+          >
+            File
+          </button>
+          <button className="btn small" onClick={() => (setFileDialog({ initialTarget: suggest }), setSuggest(null))}>
+            Choose…
+          </button>
+          <button className="icon-btn" onClick={() => setSuggest(null)} aria-label="Not now" title="Not now">
+            <Icon name="close" />
+          </button>
+        </div>
+      )}
+
+      {fileDialog && (
+        <FileDialog
+          meeting={meeting}
+          initialTarget={fileDialog.initialTarget}
+          toast={toast}
+          onClose={(r) => {
+            setFileDialog(null);
+            if (r !== undefined) setMeeting((m) => ({ ...m, filed: r }));
+          }}
+        />
+      )}
 
       <div className="meeting-body">
         <div className="doc-col">

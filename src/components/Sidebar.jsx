@@ -1,11 +1,21 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Icon from './Icon.jsx';
 import { dayGroup, fmtTime } from '../lib/util.js';
 import { api } from '../lib/bridge.js';
 
 export default function Sidebar({ meetings, selectedId, view, query, onQuery, matches, onSelect, onNew, onAsk, onSettings, rec, enhancingId }) {
+  // Clients, prospects and leads this person has filed meetings to, for the filter.
+  const [client, setClient] = useState('');
+  const clients = useMemo(() => {
+    const byKey = new Map();
+    for (const m of meetings) if (m.filed) byKey.set(`${m.filed.type}:${m.filed.id}`, { name: m.filed.name, count: (byKey.get(`${m.filed.type}:${m.filed.id}`)?.count || 0) + 1 });
+    return [...byKey].map(([key, v]) => ({ key, ...v })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [meetings]);
+  const clientOn = client && clients.some((c) => c.key === client) ? client : '';
+
   const groups = useMemo(() => {
-    const list = matches ? meetings.filter((m) => matches.includes(m.id)) : meetings;
+    let list = matches ? meetings.filter((m) => matches.includes(m.id)) : meetings;
+    if (clientOn) list = list.filter((m) => m.filed && `${m.filed.type}:${m.filed.id}` === clientOn);
     const out = [];
     for (const m of list) {
       const g = dayGroup(m.createdAt);
@@ -13,7 +23,7 @@ export default function Sidebar({ meetings, selectedId, view, query, onQuery, ma
       out.at(-1).items.push(m);
     }
     return out;
-  }, [meetings, matches]);
+  }, [meetings, matches, clientOn]);
 
   return (
     <aside className="sidebar">
@@ -35,10 +45,20 @@ export default function Sidebar({ meetings, selectedId, view, query, onQuery, ma
           <Icon name="search" />
           <input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="Search notes and transcripts" />
         </label>
+        {clients.length > 0 && (
+          <select className="select client-filter" value={clientOn} onChange={(e) => setClient(e.target.value)} aria-label="Show meetings filed to a client">
+            <option value="">All meetings</option>
+            {clients.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.name} ({c.count})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <nav className="meeting-list">
-        {groups.length === 0 && <p className="muted small pad">{query ? 'No matches.' : 'No meetings yet.'}</p>}
+        {groups.length === 0 && <p className="muted small pad">{query || clientOn ? 'No matches.' : 'No meetings yet.'}</p>}
         {groups.map((g) => (
           <div key={g.label}>
             <div className="group-label">{g.label}</div>

@@ -116,6 +116,27 @@ export class CoreClient {
     return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}${q}`, { method: 'DELETE' })).json();
   }
 
+  // Filing a meeting to a client's, prospect's or lead's timeline (needs features.file).
+  async searchClients(q, signal) {
+    return (await this.request(`/api/trailmix/v1/clients?q=${encodeURIComponent(q)}`, { signal })).json();
+  }
+
+  async companyContacts(companyId) {
+    return (await this.request(`/api/trailmix/v1/companies/${encodeURIComponent(companyId)}/contacts`)).json();
+  }
+
+  async meetingFiling(id) {
+    return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}/file`)).json();
+  }
+
+  async fileMeeting(id, { target, contactId = null, includeTranscript = false }) {
+    return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}/file`, { method: 'POST', body: { target, contactId, includeTranscript } })).json();
+  }
+
+  async unfileMeeting(id) {
+    return (await this.request(`/api/trailmix/v1/meetings/${encodeURIComponent(id)}/file`, { method: 'DELETE' })).json();
+  }
+
   async signout() {
     await this.request('/api/trailmix/v1/signout', { method: 'POST' });
   }
