@@ -79,7 +79,7 @@ export function createMeeting(fields = {}) {
 export function patchMeeting(id, fields) {
   const m = getMeeting(id);
   if (!m) return null;
-  const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat'];
+  const allowed = ['title', 'notes', 'enhanced', 'templateId', 'chat', 'filed'];
   const changed = allowed.filter((k) => k in fields);
   for (const k of changed) m[k] = fields[k];
   touch(m, changed);
